@@ -1,0 +1,22 @@
+{
+  "name": "StudyAnnotation",
+  "description": "A highlight or underline the reader made on a book introduction, an outline heading, a book prayer or a verse opened from the sidebar.",
+  "fields": [
+    { "name": "owner_email", "type": "string", "required": true, "label": "Owner" },
+    { "name": "book_number", "type": "number", "required": true, "label": "Book number" },
+    { "name": "book", "type": "string", "label": "Book" },
+    { "name": "section", "type": "string", "label": "Section (intro | outline | prayer | verse)" },
+    { "name": "block_id", "type": "string", "label": "Block" },
+    { "name": "kind", "type": "string", "label": "Kind (highlight | underline)" },
+    { "name": "color", "type": "string", "label": "Highlight colour" },
+    { "name": "start_offset", "type": "number", "label": "Start offset" },
+    { "name": "end_offset", "type": "number", "label": "End offset" },
+    { "name": "quote", "type": "string", "label": "Marked text" }
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      { "actions": ["create", "read", "update", "delete"], "subject": { "roles": ["owner", "admin", "user", "authenticated"] } }
+    ]
+  }
+}
