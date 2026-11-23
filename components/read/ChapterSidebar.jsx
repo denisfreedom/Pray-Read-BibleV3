@@ -15,6 +15,17 @@ import { BookOpenIcon, HeartHandshakeIcon, MessageCircleIcon } from "lucide-reac
 
 const EMPTY = [];
 
+// The panel carries the short form of the closing prayer. The full prayer
+// closes the chapter at the foot of the page, so the same words are never
+// read twice.
+const shorten = (text, limit = 300) => {
+  const value = String(text || "").trim();
+  if (value.length <= limit) return value;
+  const cut = value.slice(0, limit);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 140 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+};
+
 /**
  * The left hand panel of the chapter reader.
  *
@@ -31,7 +42,8 @@ export default function ChapterSidebar({
   annotations = EMPTY,
   onAnnotate,
   onRemove,
-  onOpenPassage
+  onOpenPassage,
+  panelOpen = false
 }) {
   const bookNumber = book ? book.number : 0;
 
@@ -85,7 +97,7 @@ export default function ChapterSidebar({
   const prayerBlock = `chapter-prayer-${bookNumber}-${chapter}`;
 
   return (
-    <aside className="pr-chapter-side">
+    <aside className={`pr-chapter-side${panelOpen ? " is-open" : ""}`} id="chapter-panel">
       <section className="pr-chapter-card" id="chapter-intro-panel">
         <header className="pr-chapter-card-head">
           <BookOpenIcon className="h-4 w-4" aria-hidden="true" />
@@ -160,6 +172,17 @@ export default function ChapterSidebar({
                 onRemove={onRemove}
                 className="pr-chapter-note-body"
               />
+              {language === "both" && note.bodyLu ? (
+                <AnnotatedText
+                  blockId={`${commentaryBlock}-${index}-lu`}
+                  section="chapter-commentary"
+                  text={note.bodyLu}
+                  annotations={forBlock(`${commentaryBlock}-${index}-lu`)}
+                  onAnnotate={onAnnotate}
+                  onRemove={onRemove}
+                  className="pr-chapter-note-body is-lu"
+                />
+              ) : null}
             </article>
           ))}
           <p className="pr-chapter-hint">
@@ -178,9 +201,12 @@ export default function ChapterSidebar({
         </header>
         <div className="pr-chapter-scroll">
           {prayers.map((prayer, index) => {
+            const english = prayer.body || "";
+            const luganda = prayer.bodyLu || "";
             const text =
-              (language === "lu" ? prayer.bodyLu || prayer.body : prayer.body || prayer.bodyLu) || "";
+              (language === "lu" ? luganda || english : english || luganda) || "";
             if (!text) return null;
+            const luText = language === "both" && luganda ? shorten(luganda) : "";
             return (
               <article key={`prayer-${index}`} className="pr-chapter-prayer">
                 <p className="pr-chapter-prayer-title">
@@ -189,12 +215,23 @@ export default function ChapterSidebar({
                 <AnnotatedText
                   blockId={`${prayerBlock}-${index}`}
                   section="chapter-prayer"
-                  text={text}
+                  text={shorten(text)}
                   annotations={forBlock(`${prayerBlock}-${index}`)}
                   onAnnotate={onAnnotate}
                   onRemove={onRemove}
                   className="pr-chapter-prayer-body"
                 />
+                {luText ? (
+                  <AnnotatedText
+                    blockId={`${prayerBlock}-${index}-lu`}
+                    section="chapter-prayer"
+                    text={luText}
+                    annotations={forBlock(`${prayerBlock}-${index}-lu`)}
+                    onAnnotate={onAnnotate}
+                    onRemove={onRemove}
+                    className="pr-chapter-prayer-body is-lu"
+                  />
+                ) : null}
                 {prayer.ref ? (
                   <button
                     type="button"
@@ -207,6 +244,16 @@ export default function ChapterSidebar({
               </article>
             );
           })}
+          <button
+            type="button"
+            className="pr-chapter-ref"
+            onClick={() => {
+              const node = document.getElementById("chapter-closing-prayer");
+              if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+          >
+            Read the full closing prayer at the end of the chapter
+          </button>
           <p className="pr-chapter-hint">
             Select any text to highlight or underline it. Tap the reference to read the verse here.
           </p>

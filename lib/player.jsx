@@ -78,10 +78,18 @@ export function PlayerProvider({ children }) {
     audio.playbackRate = state.speed;
     audio.volume = state.volume;
     audio.load();
-    setState((prev) => ({ ...prev, index, currentTime: 0, duration: 0, error: "", ready: false }));
+    setState((prev) => ({
+      ...prev,
+      index,
+      currentTime: 0,
+      duration: 0,
+      error: "",
+      ready: false,
+      playing: autoplay ? true : prev.playing
+    }));
     if (autoplay) {
       audio.play().catch(() => {
-        setState((prev) => ({ ...prev, error: "Audio could not load  -  try again" }));
+        setState((prev) => ({ ...prev, playing: false, error: "Audio could not load  -  try again" }));
       });
     }
   }, [state.speed, state.volume]);

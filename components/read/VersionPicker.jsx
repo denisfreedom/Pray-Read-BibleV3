@@ -29,11 +29,18 @@ export default function VersionPicker({ versionId, onChange, busy = false }) {
   useEffect(() => {
     if (!open) return undefined;
     const onPointer = (event) => {
-      if (containerRef.current && containerRef.current.contains(event.target)) return;
+      const target = event.target;
+      const menu = document.querySelector(".pr-version-menu");
+      if (containerRef.current && containerRef.current.contains(target)) return;
+      if (menu && menu.contains(target)) return;
       setOpen(false);
     };
     document.addEventListener("mousedown", onPointer);
-    return () => document.removeEventListener("mousedown", onPointer);
+    document.addEventListener("touchstart", onPointer);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("touchstart", onPointer);
+    };
   }, [open]);
 
   const active = getVersionOrDefault(versionId);
