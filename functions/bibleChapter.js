@@ -106,14 +106,22 @@ const strongsUrl = (bookNumber, chapter) =>
  * superscript codes and are kept in the verse text so the reader sees them
  * beside the word they belong to.
  */
-const parseStrongs = (raw) => {
+const parseStrongs = (raw, bookNumber) => {
   const list = Array.isArray(raw) ? raw : Array.isArray(raw && raw.verses) ? raw.verses : [];
+  // The Old Testament carries the Hebrew Strong's numbers and the New
+  // Testament the Greek ones, so the book tells which of the two is used.
+  const prefix = Number(bookNumber) >= 40 ? "G" : "H";
   const verses = [];
   for (const row of list) {
     if (!row) continue;
     const number = Number(row.verse);
     const text = decodeEntities(
       String(row.text || "")
+        .replace(/<S>\s*([A-Za-z]?\d{1,5})\s*<\/S>/gi, (whole, code) => {
+          const digits = code.match(/\d+/);
+          if (!digits) return " ";
+          return ` (${prefix}${Number(digits[0])})`;
+        })
         .replace(/<sup[^>]*>([\s\S]*?)<\/sup>/gi, " ($1)")
         .replace(/<[^>]+>/g, "")
     ).replace(/\s{2,}/g, " ").trim();
@@ -175,9 +183,9 @@ Deno.serve(async (req) => {
           headers: { "User-Agent": "PrayReadBible/1.0" }
         });
         const raw = await response.json();
-        const verses = response.ok ? parseStrongs(raw) : [];
+        const verses = response.ok ? parseStrongs(raw, bookNumber) : [];
         if (verses.length > 0) {
-          const marked = verses.some((verse) => /\([A-Za-z]?\d{1,5}\)/.test(verse.text));
+          const marked = verses.some((verse) => /\([GH]\d{1,5}\)/.test(verse.text));
           return Response.json({
             reference: `${book} ${chapter}`,
             book,

@@ -4,12 +4,14 @@ import { createPageUrl } from "@/utils";
 import { callAdmin, getAdminToken, setAdminToken } from "@/lib/adminSession";
 import { DEVOTIONALS, PRAYERS, VERSE_SONGS, QA_ENTRIES, INSIGHTS } from "@/lib/seedContent";
 import LugandaInstaller from "@/components/admin/LugandaInstaller";
+import KjvPlusInstaller from "@/components/admin/KjvPlusInstaller";
 import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon } from "lucide-react";
 
 const SECTIONS = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboardIcon },
   { id: "books", label: "Books & Chapters", icon: BookOpenIcon },
   { id: "luganda", label: "Luganda Bible", icon: LanguagesIcon },
+  { id: "kjvplus", label: "KJV+ with Strong's", icon: BookOpenIcon },
   { id: "devotionals", label: "Devotionals", icon: NotebookPenIcon },
   { id: "prayers", label: "Prayer Library", icon: HandHeartIcon },
   { id: "songs", label: "Verse-Songs", icon: MusicIcon },
@@ -343,6 +345,8 @@ export default function AdminDashboard() {
           {message ? <div className="pr-success">{message}</div> : null}
 
           {section === "luganda" ? <LugandaInstaller /> : null}
+
+          {section === "kjvplus" ? <KjvPlusInstaller /> : null}
 
           {section === "overview" ? (
             <div>

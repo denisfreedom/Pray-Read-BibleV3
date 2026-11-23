@@ -6,13 +6,14 @@ import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { BIBLE_BOOKS, getBookByNumber } from "@/lib/bibleBooks";
 import { fetchChapter } from "@/lib/bibleApi";
+import { normalizeStrongCode } from "@/lib/strongs";
 import { getCrossReferences } from "@/lib/crossRefs";
 import { offline, markKey } from "@/lib/offlineDb";
 import { logReadingActivity } from "@/lib/activity";
 import { findPlanDay, recordReading } from "@/lib/readings";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { formatDateLabel } from "@/lib/reading";
-import { getActiveVersionId, getVersionOrDefault } from "@/lib/versions";
+import { getActiveVersionId, getVersionOrDefault, VERSIONS } from "@/lib/versions";
 import { usePlayer } from "@/lib/player";
 import {
   annotationKey,
@@ -34,6 +35,7 @@ import ChapterClosingPrayer from "@/components/read/ChapterClosingPrayer";
 import VersionPicker from "@/components/read/VersionPicker";
 import ShareSheet from "@/components/read/ShareSheet";
 import StrongsText from "@/components/read/StrongsText";
+import StrongsPopup from "@/components/read/StrongsPopup";
 import VersePopup from "@/components/read/VersePopup";
 import Spinner from "@/components/common/Spinner";
 import EmptyState from "@/components/common/EmptyState";
@@ -83,6 +85,10 @@ export default function Chapter() {
   const verseParam = Number(params.get("verse")) || 0;
   const book = getBookByNumber(bookNumber) || BIBLE_BOOKS[18];
   const [versionId, setVersionId] = useState(() => {
+    // A link can name the version it wants to open: ?version=kjvp
+    const wanted = params.get("version");
+    const known = wanted ? VERSIONS.find((record) => record.id === wanted) : null;
+    if (known) return known.id;
     const lang = params.get("lang");
     if (lang === "lu") return "luganda";
     if (lang === "en") return "kjv";
@@ -134,6 +140,15 @@ export default function Chapter() {
   const [shareTitle, setShareTitle] = useState("");
   const [shareSubtitle, setShareSubtitle] = useState("");
   const [hasStrongs, setHasStrongs] = useState(false);
+  // A link can open the definition of a word straight away: ?strong=G2424
+  const [strongCode, setStrongCode] = useState(() => normalizeStrongCode(params.get("strong")));
+  const [strongWord, setStrongWord] = useState("");
+
+  // A blue Strong's number opens the definition of the word it belongs to.
+  const handleStrongClick = useCallback((code, word) => {
+    setStrongCode(code);
+    setStrongWord(word || "");
+  }, []);
   const [panelTab, setPanelTab] = useState("study");
   const [panelOpen, setPanelOpen] = useState(false);
   const [studySection, setStudySection] = useState("intro");
@@ -800,7 +815,9 @@ export default function Chapter() {
                                 padding: background ? "0 4px" : undefined
                               }}
                             >
-                              {showEnglish ? <StrongsText text={texts.english} /> : null}
+                              {showEnglish ? (
+                                <StrongsText text={texts.english} onCodeClick={handleStrongClick} />
+                              ) : null}
                               {showEnglish && !texts.english && showLuganda ? (
                                 <span className="pr-verse-missing">The English text is not yet available for this verse.</span>
                               ) : null}
@@ -945,6 +962,10 @@ export default function Chapter() {
         url={shareUrl}
         onClose={() => setShareOpen(false)}
       />
+
+      {strongCode ? (
+        <StrongsPopup code={strongCode} word={strongWord} onClose={() => setStrongCode(null)} />
+      ) : null}
 
       {toast ? <div className="pr-toast">{toast}</div> : null}
     </div>
