@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { safeText } from "@/lib/format";
@@ -70,10 +70,22 @@ const bookNumberOf = (value) => {
   return resolved ? resolved.number : null;
 };
 
-export default function BookStudyResources({ book, onOpenPassage }) {
+export default function BookStudyResources({ book, onOpenPassage, openSignal = 0 }) {
   const [tab, setTab] = useState("commentary");
   const [page, setPage] = useState(1);
   const [collapsed, setCollapsed] = useState(false);
+  const panelRef = useRef(null);
+
+  // The reader top bar can ask for this panel: open it and bring it into view.
+  useEffect(() => {
+    if (!openSignal) return;
+    setCollapsed(false);
+    const node = panelRef.current;
+    if (!node) return;
+    window.setTimeout(() => {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }, [openSignal]);
 
   const { data: commentaryRows } = useQuery({
     queryKey: ["studyCommentary"],
@@ -252,7 +264,7 @@ export default function BookStudyResources({ book, onOpenPassage }) {
   };
 
   return (
-    <section className="pr-study" aria-label="Book study resources">
+    <section className="pr-study" id="book-study-resources" ref={panelRef} aria-label="Book study resources">
       <header className="pr-study-head">
         <span className="pr-study-head-icon">
           <BookOpenIcon className="h-5 w-5" />

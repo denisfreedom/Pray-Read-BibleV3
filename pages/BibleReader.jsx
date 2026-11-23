@@ -8,7 +8,7 @@ import BookGrid from "@/components/read/BookGrid";
 import ChapterSelector from "@/components/read/ChapterSelector";
 import { offline } from "@/lib/offlineDb";
 import { getBookByNumber, OLD_TESTAMENT, NEW_TESTAMENT } from "@/lib/bibleBooks";
-import { BookOpenIcon, ChevronLeftIcon, CloudOffIcon, SparklesIcon } from "lucide-react";
+import { BookOpenIcon, ChevronLeftIcon, CloudOffIcon, LayersIcon, SparklesIcon } from "lucide-react";
 
 const OLD_BOOK_COUNT = OLD_TESTAMENT.length;
 const NEW_BOOK_COUNT = NEW_TESTAMENT.length;
@@ -21,6 +21,8 @@ export default function BibleReader() {
   const [tab, setTab] = useState("old");
   const [downloaded, setDownloaded] = useState(new Set());
   const [offlineReady, setOfflineReady] = useState(false);
+  const [studySignal, setStudySignal] = useState(0);
+  const [sidebarSignal, setSidebarSignal] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -86,14 +88,35 @@ export default function BibleReader() {
             </div>
 
             <div className="pr-reader-pills">
-              {todayCount > 0 ? (
-                <span className="pr-reader-pill pr-reader-pill-note">
-                  <BookOpenIcon className="h-4 w-4" /> {todayCount} in the reading plan
-                </span>
-              ) : null}
-              <span className="pr-reader-pill pr-reader-pill-gold">
-                <BookOpenIcon className="h-4 w-4" /> Bible Reader
-              </span>
+              {selectedBook ? (
+                <>
+                  <button
+                    type="button"
+                    className="pr-reader-pill pr-reader-pill-note is-button"
+                    onClick={() => setSidebarSignal((value) => value + 1)}
+                  >
+                    <BookOpenIcon className="h-4 w-4" /> Book intro, outline &amp; prayer
+                  </button>
+                  <button
+                    type="button"
+                    className="pr-reader-pill pr-reader-pill-gold is-button"
+                    onClick={() => setStudySignal((value) => value + 1)}
+                  >
+                    <LayersIcon className="h-4 w-4" /> Study resources
+                  </button>
+                </>
+              ) : (
+                <>
+                  {todayCount > 0 ? (
+                    <span className="pr-reader-pill pr-reader-pill-note">
+                      <BookOpenIcon className="h-4 w-4" /> {todayCount} in the reading plan
+                    </span>
+                  ) : null}
+                  <span className="pr-reader-pill pr-reader-pill-gold">
+                    <BookOpenIcon className="h-4 w-4" /> Bible Reader
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -133,6 +156,8 @@ export default function BibleReader() {
             book={selectedBook}
             accent={selectedAccent}
             downloaded={downloaded.has(selectedBook.number)}
+            studySignal={studySignal}
+            sidebarSignal={sidebarSignal}
           />
         ) : (
           <BookGrid

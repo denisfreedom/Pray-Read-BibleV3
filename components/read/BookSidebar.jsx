@@ -26,10 +26,11 @@ export default function BookSidebar({
   onRemove,
   onOpenPassage,
   selection,
-  onSelectPassage
+  onSelectPassage,
+  panelRef
 }) {
   return (
-    <aside className="pr-sel-side">
+    <aside className="pr-sel-side" ref={panelRef}>
       <div className="pr-sel-side-head">
         <span className="pr-sel-side-icon" style={{ background: accent }}>
           <BookOpenIcon className="h-4 w-4" />

@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useQuery } from "@tanstack/react-query";
 import { fse2 } from "@/api/fse2Client";
 import { useAuth } from "@/lib/AuthContext";
-import { CloudOffIcon, FlagIcon, PlayIcon, TargetIcon } from "lucide-react";
+import { CloudOffIcon } from "lucide-react";
 import { getBookGuide } from "@/lib/bookGuides";
 import {
   annotationKey,
@@ -27,7 +27,13 @@ const selectionKey = (bookNumber) => `prayread-outline-selection-${bookNumber}`;
  * book prayer, and a chapter grid on the right. The reader can mark the
  * sidebar, open any verse in place and jump straight to a part of the book.
  */
-export default function ChapterSelector({ book, accent, downloaded }) {
+export default function ChapterSelector({
+  book,
+  accent,
+  downloaded,
+  studySignal = 0,
+  sidebarSignal = 0
+}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const email = user && user.email ? user.email : "";
@@ -37,6 +43,7 @@ export default function ChapterSelector({ book, accent, downloaded }) {
   const [selection, setSelection] = useState(null);
   const [popup, setPopup] = useState(null);
   const [annotations, setAnnotations] = useState([]);
+  const sidebarRef = useRef(null);
 
   const guide = useMemo(() => getBookGuide(book), [book]);
 
@@ -126,11 +133,21 @@ export default function ChapterSelector({ book, accent, downloaded }) {
     [book.number, navigate]
   );
 
-  const middle = Math.max(1, Math.ceil(book.chapters / 2));
   const testament = book.number <= 39 ? "Old Testament" : "New Testament";
 
-  const chapterLink = (value) =>
-    `${createPageUrl("Chapter")}?book=${book.number}&chapter=${value}`;
+  // The top bar can also ask for the book intro, outline and prayer sidebar.
+  useEffect(() => {
+    if (!sidebarSignal) return;
+    setSection("intro");
+    const node = sidebarRef.current;
+    if (!node) return;
+    window.setTimeout(() => {
+      const box = node.getBoundingClientRect();
+      const alreadyOnScreen = box.top >= 0 && box.top < window.innerHeight;
+      if (alreadyOnScreen) return;
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }, [sidebarSignal]);
 
   return (
     <div className="pr-sel-layout">
@@ -146,6 +163,7 @@ export default function ChapterSelector({ book, accent, downloaded }) {
         onOpenPassage={handleOpenPassage}
         selection={selection}
         onSelectPassage={handleSelectPassage}
+        panelRef={sidebarRef}
       />
 
       <div className="pr-sel-main">
@@ -174,22 +192,11 @@ export default function ChapterSelector({ book, accent, downloaded }) {
           />
         </div>
 
-        <section className="pr-sel-quick">
-          <p className="pr-sel-eyebrow">Quick navigation</p>
-          <div className="pr-sel-quick-row">
-            <Link to={chapterLink(1)} className="pr-sel-quick-btn pr-sel-quick-start">
-              <PlayIcon className="h-4 w-4" /> Start reading
-            </Link>
-            <Link to={chapterLink(middle)} className="pr-sel-quick-btn pr-sel-quick-middle">
-              <TargetIcon className="h-4 w-4" /> Middle
-            </Link>
-            <Link to={chapterLink(book.chapters)} className="pr-sel-quick-btn pr-sel-quick-last">
-              <FlagIcon className="h-4 w-4" /> Last chapter
-            </Link>
-          </div>
-        </section>
-
-        <BookStudyResources book={book} onOpenPassage={handleOpenPassage} />
+        <BookStudyResources
+          book={book}
+          onOpenPassage={handleOpenPassage}
+          openSignal={studySignal}
+        />
       </div>
 
       {popup ? (
