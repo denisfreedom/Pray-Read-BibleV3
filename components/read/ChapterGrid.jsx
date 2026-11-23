@@ -6,7 +6,7 @@ import { createPageUrl } from "@/utils";
  * The chapter grid of the book reader: one tappable tile per chapter,
  * exactly like the old Pray-Read book page.
  */
-export default function ChapterGrid({ book, accent, selectedChapter, onSelect }) {
+export default function ChapterGrid({ book, accent, selectedChapter, onSelect, lang = "en" }) {
   const chapters = [];
   for (let chapter = 1; chapter <= book.chapters; chapter += 1) {
     chapters.push(chapter);
@@ -19,7 +19,7 @@ export default function ChapterGrid({ book, accent, selectedChapter, onSelect })
         {chapters.map((chapter) => (
           <Link
             key={chapter}
-            to={`${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}`}
+            to={`${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}${lang === "lu" ? "&lang=lu" : ""}`}
             className={`pr-chap-chip${selectedChapter === chapter ? " is-selected" : ""}`}
             onClick={() => onSelect && onSelect(chapter)}
             aria-label={`${book.name} chapter ${chapter}`}

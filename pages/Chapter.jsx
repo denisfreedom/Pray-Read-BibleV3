@@ -91,6 +91,11 @@ export default function Chapter() {
   const version = useMemo(() => getVersionOrDefault(versionId), [versionId]);
   const language = version.language;
   const [langMode, setLangMode] = useState(() => {
+    // The address of the chapter wins: a chapter opened in Luganda always
+    // opens in Luganda, whatever the reader used the last time.
+    const lang = params.get("lang");
+    if (lang === "lu") return "lu";
+    if (lang === "en") return "en";
     const stored = readStore(STORAGE.lang, "");
     if (stored === "en" || stored === "lu" || stored === "both") return stored;
     return versionId === "luganda" ? "lu" : "en";
@@ -131,6 +136,7 @@ export default function Chapter() {
   const [hasStrongs, setHasStrongs] = useState(false);
   const [panelTab, setPanelTab] = useState("study");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [studySection, setStudySection] = useState("intro");
   const [wideScreen, setWideScreen] = useState(
     () => typeof window === "undefined" || !window.matchMedia || window.matchMedia("(min-width: 1024px)").matches
   );
@@ -331,6 +337,13 @@ export default function Chapter() {
   }, []);
 
   const selectPanelTab = (tab) => { setPanelTab(tab); if (!wideScreen) setPanelOpen(true); };
+  // Opening a study section from the menu always brings the study panel back
+  // and shows the section the reader picked.
+  const selectStudySection = (key) => {
+    setPanelTab("study");
+    setStudySection(key);
+    if (!wideScreen) setPanelOpen(true);
+  };
   const highlightFor = (verse) => {
     const mark = marks.find((row) => row.mark_type === "highlight" && row.verse === verse);
     return mark ? HIGHLIGHT_COLORS[mark.color] || HIGHLIGHT_COLORS.yellow : null;
@@ -532,7 +545,7 @@ export default function Chapter() {
   };
 
   const handleCommentary = () => {
-    selectPanelTab("study");
+    selectStudySection("commentary");
     setToast("The commentary of this chapter is in the panel beside the verses.");
     window.setTimeout(() => setToast(""), 2200);
   };
@@ -566,7 +579,7 @@ export default function Chapter() {
   };
 
   const prayAgain = () => {
-    setPanelTab("study");
+    selectStudySection("prayer");
     setPanelOpen(true);
     window.setTimeout(() => {
       const node = document.getElementById("chapter-prayer-panel");
@@ -726,6 +739,8 @@ export default function Chapter() {
             panelOpen={panelOpen}
             onTogglePanel={() => setPanelOpen((current) => !current)}
             wideScreen={wideScreen}
+            section={studySection}
+            onSelectSection={selectStudySection}
           >
             <div className="pr-chapter-content">
               <div className="pr-card pr-card-pad">
@@ -867,6 +882,8 @@ export default function Chapter() {
               onRemove={handleRemove}
               onOpenPassage={handleOpenPassage}
               panelOpen={panelOpen}
+              activeSection={studySection}
+              onSectionChange={setStudySection}
             />
           ) : (
             <ChapterResourcesPanel

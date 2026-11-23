@@ -32,7 +32,8 @@ export default function ChapterSelector({
   accent,
   downloaded,
   studySignal = 0,
-  sidebarSignal = 0
+  sidebarSignal = 0,
+  lang = "en"
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -127,10 +128,10 @@ export default function ChapterSelector({
         // the selection is still kept for this visit
       }
       navigate(
-        `${createPageUrl("Chapter")}?book=${book.number}&chapter=${record.chapter}&verse=${record.verse}`
+        `${createPageUrl("Chapter")}?book=${book.number}&chapter=${record.chapter}&verse=${record.verse}${lang === "lu" ? "&lang=lu" : ""}`
       );
     },
-    [book.number, navigate]
+    [book.number, lang, navigate]
   );
 
   const testament = book.number <= 39 ? "Old Testament" : "New Testament";
@@ -189,6 +190,7 @@ export default function ChapterSelector({
             accent={accent}
             selectedChapter={chapter}
             onSelect={setChapter}
+            lang={lang}
           />
         </div>
 

@@ -64,6 +64,16 @@ export default function BibleReader() {
   const selectedBook = bookNumber ? getBookByNumber(bookNumber) : null;
   const selectedAccent = selectedBook && selectedBook.number <= 39 ? "#b98428" : "#2f5d8a";
 
+  // The language of the chapter lives in the address, so a book opened in
+  // Luganda keeps that choice in every chapter.
+  const lang = searchParams.get("lang") === "lu" ? "lu" : "en";
+  const setLang = (value) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "lu") next.set("lang", "lu");
+    else next.delete("lang");
+    setSearchParams(next);
+  };
+
   return (
     <div>
       <section className="pr-reader-top">
@@ -88,6 +98,24 @@ export default function BibleReader() {
             </div>
 
             <div className="pr-reader-pills">
+              <div className="pr-lang-toggle" role="group" aria-label="Choose the language of the chapter">
+                <button
+                  type="button"
+                  className={`pr-lang-btn${lang === "en" ? " is-active" : ""}`}
+                  aria-pressed={lang === "en"}
+                  onClick={() => setLang("en")}
+                >
+                  English
+                </button>
+                <button
+                  type="button"
+                  className={`pr-lang-btn${lang === "lu" ? " is-active" : ""}`}
+                  aria-pressed={lang === "lu"}
+                  onClick={() => setLang("lu")}
+                >
+                  Luganda
+                </button>
+              </div>
               {selectedBook ? (
                 <>
                   <button
@@ -158,6 +186,7 @@ export default function BibleReader() {
             downloaded={downloaded.has(selectedBook.number)}
             studySignal={studySignal}
             sidebarSignal={sidebarSignal}
+            lang={lang}
           />
         ) : (
           <BookGrid

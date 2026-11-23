@@ -1,0 +1,18 @@
+{
+  "name": "LugandaChapter",
+  "description": "The Luganda text of one chapter of the Bible, installed from the public Luganda Bible so every reader can read the chapter in Luganda, online or offline.",
+  "fields": [
+    { "name": "book_number", "type": "number", "required": true, "label": "Book number" },
+    { "name": "book", "type": "string", "label": "Book name" },
+    { "name": "chapter", "type": "number", "required": true, "label": "Chapter" },
+    { "name": "verse_count", "type": "number", "label": "Verses" },
+    { "name": "verses", "type": "string", "label": "Verses (JSON)" }
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      { "actions": ["read"], "subject": { "roles": ["*"] } },
+      { "actions": ["create", "update", "delete"], "subject": { "roles": ["owner", "admin"] } }
+    ]
+  }
+}

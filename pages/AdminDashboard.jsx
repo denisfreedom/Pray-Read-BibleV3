@@ -3,11 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { callAdmin, getAdminToken, setAdminToken } from "@/lib/adminSession";
 import { DEVOTIONALS, PRAYERS, VERSE_SONGS, QA_ENTRIES, INSIGHTS } from "@/lib/seedContent";
-import { LayoutDashboardIcon, BookOpenIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon } from "lucide-react";
+import LugandaInstaller from "@/components/admin/LugandaInstaller";
+import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon } from "lucide-react";
 
 const SECTIONS = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboardIcon },
   { id: "books", label: "Books & Chapters", icon: BookOpenIcon },
+  { id: "luganda", label: "Luganda Bible", icon: LanguagesIcon },
   { id: "devotionals", label: "Devotionals", icon: NotebookPenIcon },
   { id: "prayers", label: "Prayer Library", icon: HandHeartIcon },
   { id: "songs", label: "Verse-Songs", icon: MusicIcon },
@@ -339,6 +341,8 @@ export default function AdminDashboard() {
           </div>
 
           {message ? <div className="pr-success">{message}</div> : null}
+
+          {section === "luganda" ? <LugandaInstaller /> : null}
 
           {section === "overview" ? (
             <div>

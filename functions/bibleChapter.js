@@ -29,25 +29,67 @@ const decodeEntities = (text) =>
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">");
 
+// The number of chapters every book of the Bible holds, so a request for a
+// chapter that does not exist is answered with a clear message.
+const BOOK_CHAPTERS = [
+  50, 40, 27, 36, 34, 24, 21, 4, 31, 24, 22, 25, 29, 36, 10, 13, 10, 42, 150, 31, 12, 8,
+  66, 52, 5, 48, 12, 14, 3, 9, 1, 4, 7, 3, 3, 3, 2, 14, 4, 28, 16, 24, 21, 28, 16, 16,
+  13, 6, 6, 4, 4, 5, 3, 6, 4, 3, 1, 13, 5, 5, 3, 5, 1, 1, 1, 22
+];
+
 const wordplanetUrl = (language, bookNumber, chapter) => {
   const path = language === "lu" ? "lug" : "en_10";
-  return `https://wordplanet.net/${path}/${bookNumber}/${chapter}.htm`;
+  // The source keeps every book in a two digit folder: lug/01, lug/02 ...
+  const folder = String(Number(bookNumber) || 0).padStart(2, "0");
+  return `https://wordplanet.net/${path}/${folder}/${chapter}.htm`;
 };
 
-/** Parses the verse markup used by wordplanet.net. */
-const parseWordplanet = (html) => {
-  const bodyMatch = html.match(/<div class="textBody"[^>]*>([\s\S]*?)<\/div>/i);
-  if (!bodyMatch) return [];
-  const chunks = bodyMatch[1].split(/<br\s*\/?>/i);
-  const verses = [];
-  for (const chunk of chunks) {
-    const match = chunk.match(/<span class="verse"[^>]*id="(\d+)"[^>]*>([\s\S]*?)<\/span>([\s\S]*)/i);
-    if (!match) continue;
-    const number = Number(match[1]);
-    const text = decodeEntities(cleanText(match[3]));
-    if (!Number.isFinite(number) || !text) continue;
-    verses.push({ verse: number, text });
+/**
+ * Takes the block of the chapter out of the page.
+ * The block is closed by the first div that balances the one it opens, so an
+ * element inside the chapter never cuts the text short.
+ */
+const textBodyOf = (html) => {
+  const open = html.match(/<div[^>]*class="textBody"[^>]*>/i);
+  if (!open) return "";
+  const start = open.index + open[0].length;
+  const tag = /<(\/?)div\b[^>]*>/gi;
+  tag.lastIndex = start;
+  let depth = 1;
+  let match = tag.exec(html);
+  while (match) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) return html.slice(start, match.index);
+    match = tag.exec(html);
   }
+  return html.slice(start);
+};
+
+/**
+ * Parses the verse markup used by wordplanet.net.
+ * Every verse opens with a marker that carries its number, and the words of
+ * a verse run from its marker to the next one.
+ */
+const parseWordplanet = (html) => {
+  const body = textBodyOf(html);
+  if (!body) return [];
+  const marker = /<span[^>]*class="verse"[^>]*>[\s\S]*?<\/span>/gi;
+  const found = [];
+  let match = marker.exec(body);
+  while (match) {
+    const id = /\bid="(\d+)"/.exec(match[0]);
+    if (id) {
+      found.push({ number: Number(id[1]), from: marker.lastIndex, to: match.index });
+    }
+    match = marker.exec(body);
+  }
+  const verses = [];
+  found.forEach((entry, index) => {
+    const stop = index + 1 < found.length ? found[index + 1].to : body.length;
+    const text = decodeEntities(cleanText(body.slice(entry.from, stop)));
+    if (!Number.isFinite(entry.number) || !text) return;
+    verses.push({ verse: entry.number, text });
+  });
   return verses;
 };
 
@@ -95,6 +137,16 @@ Deno.serve(async (req) => {
     }
     if (!Number.isInteger(bookNumber) || bookNumber < 1 || bookNumber > 66) {
       return Response.json({ error: "Book must be a number between 1 and 66." }, { status: 400 });
+    }
+
+    // Every book holds a known number of chapters, so a request for a
+    // chapter that does not exist is answered with a clear message.
+    const chaptersOfBook = BOOK_CHAPTERS[bookNumber - 1];
+    if (chaptersOfBook && chapter > chaptersOfBook) {
+      return Response.json(
+        { error: `Chapter ${chapter} is not part of ${book || `book ${bookNumber}`}.` },
+        { status: 404 }
+      );
     }
 
     if (language === "lu") {

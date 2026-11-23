@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CheckIcon, ChevronDownIcon, DownloadIcon, Loader2Icon, Trash2Icon } from "lucide-react";
 import {
-  DEFAULT_VERSION_ID,
+  DEFAULT_INSTALLED_IDS,
   getVersionOrDefault,
   installVersion,
   listInstalledVersions,
@@ -85,6 +85,9 @@ export default function VersionPicker({ versionId, onChange, busy = false }) {
       {open ? (
         <div className="pr-version-menu" role="menu">
           <p className="pr-version-menu-title">Installed versions</p>
+          <p className="pr-version-menu-note">
+            The King James Version and the Luganda Bible come with the app.
+          </p>
           {installed.map((version) => (
             <div key={version.id} className="pr-version-row">
               <button
@@ -103,7 +106,7 @@ export default function VersionPicker({ versionId, onChange, busy = false }) {
                 </span>
                 {version.id === versionId ? <CheckIcon className="h-4 w-4" aria-hidden="true" /> : null}
               </button>
-              {version.id !== DEFAULT_VERSION_ID ? (
+              {!DEFAULT_INSTALLED_IDS.includes(version.id) ? (
                 <button
                   type="button"
                   className="pr-version-remove"
