@@ -1,0 +1,32 @@
+{
+  "name": "Pray-Read Bible",
+  "short_name": "PrayRead",
+  "description": "Pray · Read · Listen  -  the Bible, devotionals and prayer in English and Luganda.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#faf8f2",
+  "theme_color": "#1d4035",
+  "categories": ["books", "education", "lifestyle"],
+  "icons": [
+    {
+      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/generated_0f91fdf8.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/generated_c990bd6c.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/generated_aa744f7a.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
