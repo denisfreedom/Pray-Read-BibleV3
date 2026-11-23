@@ -15,6 +15,7 @@ import {
 } from "@/lib/studyAnnotations";
 import BookSidebar from "@/components/read/BookSidebar";
 import ChapterGrid from "@/components/read/ChapterGrid";
+import BookStudyResources from "@/components/read/BookStudyResources";
 import VersePopup from "@/components/read/VersePopup";
 
 const EMPTY = [];
@@ -187,6 +188,8 @@ export default function ChapterSelector({ book, accent, downloaded }) {
             </Link>
           </div>
         </section>
+
+        <BookStudyResources book={book} onOpenPassage={handleOpenPassage} />
       </div>
 
       {popup ? (
