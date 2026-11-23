@@ -10,6 +10,7 @@ import { getCrossReferences } from "@/lib/crossRefs";
 import { offline } from "@/lib/offlineDb";
 import VerseActionBar from "@/components/read/VerseActionBar";
 import FloatingVerse from "@/components/read/FloatingVerse";
+import PassageTabs from "@/components/read/PassageTabs";
 import Spinner from "@/components/common/Spinner";
 import EmptyState from "@/components/common/EmptyState";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, Volume2Icon, TypeIcon, LanguagesIcon, ListIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, CloudOffIcon, AlertCircleIcon, HeartHandshakeIcon, BookOpenIcon } from "lucide-react";
@@ -376,19 +377,6 @@ export default function Chapter() {
           <div className="pr-grid pr-grid-3">
             <div className="pr-card pr-card-pad">
               <h3 className="pr-heading" style={{ fontSize: "1rem", fontWeight: 800, margin: "0 0 10px" }}>
-                Commentary
-              </h3>
-              <p style={{ margin: 0, fontSize: "0.88rem" }}>
-                Commentary for {reference} is added by the Pray-Read editorial team. Until then, read the passage
-                slowly and write down the first line that stirs your heart.
-              </p>
-              <Link to={createPageUrl("BibleNotes")} className="pr-link" style={{ display: "inline-block", marginTop: 10 }}>
-                Read the notes you saved →
-              </Link>
-            </div>
-
-            <div className="pr-card pr-card-pad">
-              <h3 className="pr-heading" style={{ fontSize: "1rem", fontWeight: 800, margin: "0 0 10px" }}>
                 Pray this passage
               </h3>
               <p style={{ margin: 0, fontSize: "0.88rem" }}>
@@ -419,6 +407,8 @@ export default function Chapter() {
             </div>
           </div>
         </div>
+
+        <PassageTabs book={book} chapter={chapter} reference={reference} language={language} />
       </div>
 
       {crossRef ? (

@@ -30,6 +30,8 @@ const readCollection = async (collection) => {
       return await fse2.entities.DiscussionGroup.list("-updated_date", 200);
     case "revelations":
       return await fse2.entities.Revelation.list("-updated_date", 300);
+    case "threads":
+      return await fse2.entities.DiscussionThread.list("-updated_date", 400);
     default:
       return null;
   }
@@ -77,6 +79,29 @@ Deno.serve(async (req) => {
         owner_email: String(body.owner_email || ""),
         author_name: String(body.author_name || "").slice(0, 120),
         likes: 0
+      });
+      return Response.json({ record });
+    }
+
+    if (action === "submitComment") {
+      const record = await fse2.entities.Revelation.create({
+        parent_id: String(body.parent_id || ""),
+        title: String(body.title || "Comment").slice(0, 160),
+        body: String(body.body || "").slice(0, 2000),
+        owner_email: String(body.owner_email || ""),
+        author_name: String(body.author_name || "Reader").slice(0, 120),
+        likes: 0
+      });
+      return Response.json({ record });
+    }
+
+    if (action === "submitThread") {
+      const record = await fse2.entities.DiscussionThread.create({
+        group_name: String(body.group_name || "").slice(0, 160),
+        title: String(body.title || "").slice(0, 160),
+        body: String(body.body || "").slice(0, 4000),
+        owner_email: String(body.owner_email || ""),
+        author_name: String(body.author_name || "Reader").slice(0, 120)
       });
       return Response.json({ record });
     }

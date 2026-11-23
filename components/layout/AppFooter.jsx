@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { LOGO_URL, DONATE_URL, DONATE_LINK_PROPS } from "@/lib/theme";
@@ -12,6 +12,9 @@ const QUICK_LINKS = [
   { name: "TheologicalInsights", label: "Theological insights" },
   { name: "HistoricalInsights", label: "Historical insights" },
   { name: "Community", label: "Community" },
+  { name: "CommunityRevelations", label: "Revelations" },
+  { name: "CommunityLiveTeaching", label: "Live teaching" },
+  { name: "DiscussionGroups", label: "Discussion groups" },
   { name: "Plan", label: "Reading plan" },
   { name: "Journal", label: "Prayer journal" },
   { name: "Dashboard", label: "Dashboard" },
@@ -19,13 +22,26 @@ const QUICK_LINKS = [
 ];
 
 export default function AppFooter() {
+  const [logoFailed, setLogoFailed] = useState(false);
+
   return (
     <footer className="pr-footer">
       <div className="pr-container pr-footer-grid">
         <div>
           <div className="pr-footer-brand">
             <span className="pr-brand-tile pr-brand-tile-sm">
-              <img src={LOGO_URL} alt="Pray-Read Bible" className="pr-brand-logo" />
+              {logoFailed ? (
+                <span className="pr-serif" style={{ color: "#fff", fontWeight: 700, fontSize: "0.8rem" }}>
+                  PR
+                </span>
+              ) : (
+                <img
+                  src={LOGO_URL}
+                  alt="Pray-Read Bible"
+                  className="pr-brand-logo"
+                  onError={() => setLogoFailed(true)}
+                />
+              )}
             </span>
             <span className="pr-wordmark">
               <span className="pr-wordmark-light">Pray-Read</span>{" "}

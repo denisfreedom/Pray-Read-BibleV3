@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { HomeIcon, UsersIcon, HandHeartIcon, BookOpenIcon, MusicIcon, MessageCircleQuestionIcon, NotebookPenIcon, LayoutDashboardIcon, BellIcon, LogInIcon, LogOutIcon, MenuIcon, XIcon, SunIcon, CloudOffIcon, HighlighterIcon, DownloadIcon, CalendarDaysIcon, SparklesIcon, LandmarkIcon, LightbulbIcon } from "lucide-react";
+import { HomeIcon, UsersIcon, HandHeartIcon, BookOpenIcon, MusicIcon, MessageCircleQuestionIcon, NotebookPenIcon, LayoutDashboardIcon, BellIcon, LogInIcon, LogOutIcon, MenuIcon, XIcon, CloudOffIcon, HighlighterIcon, DownloadIcon, CalendarDaysIcon, SparklesIcon, LandmarkIcon, LightbulbIcon, VideoIcon } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { LOGO_URL, DONATE_URL, DONATE_LINK_PROPS } from "@/lib/theme";
 
@@ -23,12 +23,16 @@ const SECONDARY_ITEMS = [
   { name: "Plan", label: "Reading plan", icon: CalendarDaysIcon },
   { name: "Journal", label: "Prayer journal", icon: NotebookPenIcon },
   { name: "Offline", label: "Offline centre", icon: DownloadIcon },
-  { name: "BibleNotes", label: "My notes", icon: HighlighterIcon }
+  { name: "BibleNotes", label: "My notes", icon: HighlighterIcon },
+  { name: "CommunityRevelations", label: "Revelations", icon: LightbulbIcon },
+  { name: "CommunityLiveTeaching", label: "Live teaching", icon: VideoIcon },
+  { name: "DiscussionGroups", label: "Discussion groups", icon: UsersIcon }
 ];
 
 export default function AppHeader({ currentPageName }) {
   const { isAuthenticated, user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
 
   useEffect(() => {
@@ -54,7 +58,18 @@ export default function AppHeader({ currentPageName }) {
       <div className="pr-container pr-header-inner">
         <Link to={createPageUrl("Home")} className="pr-brand" aria-label="Pray-Read Bible home">
           <span className="pr-brand-tile">
-            <img src={LOGO_URL} alt="Pray-Read Bible" className="pr-brand-logo" />
+            {logoFailed ? (
+              <span className="pr-serif" style={{ color: "var(--pr-emerald)", fontWeight: 700 }}>
+                PR
+              </span>
+            ) : (
+              <img
+                src={LOGO_URL}
+                alt="Pray-Read Bible"
+                className="pr-brand-logo"
+                onError={() => setLogoFailed(true)}
+              />
+            )}
           </span>
           <span className="pr-wordmark">
             <span className="pr-wordmark-dark">Pray-Read</span>{" "}
@@ -126,10 +141,6 @@ export default function AppHeader({ currentPageName }) {
               {item.label}
             </Link>
           ))}
-          <Link to={createPageUrl("Offline")} className={linkClass("Offline")}>
-            <SunIcon className="h-4 w-4" />
-            Offline centre
-          </Link>
           {SECONDARY_ITEMS.map((item) => (
             <Link key={item.name} to={createPageUrl(item.name)} className={linkClass(item.name)}>
               <item.icon className="h-4 w-4" />

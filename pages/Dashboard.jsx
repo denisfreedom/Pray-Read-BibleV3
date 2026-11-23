@@ -8,6 +8,8 @@ import Home from "@/pages/Home";
 import { offline } from "@/lib/offlineDb";
 import { STORAGE_KEYS } from "@/lib/theme";
 import { bytesToMb } from "@/lib/format";
+import { computeStreak } from "@/lib/reading";
+import { fetchPublicCollection } from "@/lib/contentApi";
 import { BIBLE_BOOKS, getBookByNumber } from "@/lib/bibleBooks";
 import { BookOpenIcon, FlameIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, DownloadIcon, CheckCircleIcon, MusicIcon, HandHeartIcon } from "lucide-react";
 
@@ -48,6 +50,11 @@ export default function Dashboard() {
     enabled: !!email
   });
 
+  const { data: devotionals } = useQuery({
+    queryKey: ["devotionals"],
+    queryFn: () => fetchPublicCollection("devotionals", { authenticated: isAuthenticated })
+  });
+
   React.useEffect(() => {
     let active = true;
     Promise.all([offline.count("chapters").catch(() => 0), offline.count("verses").catch(() => 0), offline.estimate().catch(() => ({ usage: 0 }))])
@@ -75,9 +82,23 @@ export default function Dashboard() {
   const highlights = myMarks.filter((row) => row.mark_type === "highlight");
   const bookmarks = myMarks.filter((row) => row.mark_type === "bookmark");
   const notes = myMarks.filter((row) => row.mark_type === "note");
-  const completedDevotionals = devotionalProgress || [];
+  const completedDevotionals = useMemo(
+    () => (devotionalProgress || []).filter((row) => !email || row.owner_email === email),
+    [devotionalProgress, email]
+  );
   const saved = savedPrayers || [];
   const doneLocal = readDone();
+  const streak = useMemo(() => computeStreak(myReadings), [myReadings]);
+
+  const completedRows = useMemo(() => {
+    const titles = new Map((devotionals || []).map((row) => [row.code, row.title]));
+    return completedDevotionals.map((row) => ({
+      id: row.id,
+      code: row.devotional_code,
+      title: titles.get(row.devotional_code) || row.devotional_code,
+      completed_date: row.completed_date
+    }));
+  }, [completedDevotionals, devotionals]);
 
   const lastBook = lastReading ? BIBLE_BOOKS.find((item) => item.name === lastReading.book) : null;
 
@@ -120,16 +141,16 @@ export default function Dashboard() {
             <p className="pr-stat-label">Chapters read</p>
           </div>
           <div className="pr-stat">
+            <p className="pr-stat-value">{streak}</p>
+            <p className="pr-stat-label">Day streak</p>
+          </div>
+          <div className="pr-stat">
             <p className="pr-stat-value">{highlights.length + bookmarks.length + notes.length}</p>
             <p className="pr-stat-label">Highlights & notes</p>
           </div>
           <div className="pr-stat">
             <p className="pr-stat-value">{doneLocal.length + completedDevotionals.length}</p>
             <p className="pr-stat-label">Devotionals done</p>
-          </div>
-          <div className="pr-stat">
-            <p className="pr-stat-value">{saved.length}</p>
-            <p className="pr-stat-label">Prayers saved</p>
           </div>
         </div>
 
@@ -255,7 +276,43 @@ export default function Dashboard() {
 
           <div className="pr-card pr-card-pad">
             <h2 className="pr-heading" style={{ margin: "0 0 10px", fontSize: "1.1rem", fontWeight: 800 }}>
-              <HandHeartIcon className="h-4 w-4" style={{ display: "inline", color: "var(--pr-gold-deep)" }} /> Prayer list
+              <CheckCircleIcon className="h-4 w-4" style={{ display: "inline", color: "var(--pr-gold-deep)" }} /> My
+              completed devotionals
+            </h2>
+            {completedRows.length === 0 ? (
+              <p style={{ margin: 0, fontSize: "0.9rem" }}>
+                Finish a daily devotional and it is kept here for your next quiet morning.
+              </p>
+            ) : (
+              <ul className="pr-list-reset" style={{ display: "grid", gap: 8 }}>
+                {completedRows.slice(0, 6).map((row) => (
+                  <li key={row.id} style={{ fontSize: "0.85rem" }}>
+                    <Link
+                      to={createPageUrl("Devotionals") + `?devotional=${encodeURIComponent(row.code || "")}`}
+                      className="pr-link"
+                    >
+                      {row.title}
+                    </Link>
+                    {row.completed_date ? (
+                      <span style={{ display: "block", fontSize: "0.78rem" }}>{row.completed_date}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Link
+              to={createPageUrl("Devotionals")}
+              className="pr-link"
+              style={{ display: "inline-block", marginTop: 10, fontSize: "0.85rem" }}
+            >
+              Open the daily devotionals →
+            </Link>
+          </div>
+
+          <div className="pr-card pr-card-pad">
+            <h2 className="pr-heading" style={{ margin: "0 0 10px", fontSize: "1.1rem", fontWeight: 800 }}>
+              <HandHeartIcon className="h-4 w-4" style={{ display: "inline", color: "var(--pr-gold-deep)" }} /> Prayer
+              list{saved.length ? ` (${saved.length})` : ""}
             </h2>
             {saved.length === 0 ? (
               <p style={{ margin: 0, fontSize: "0.9rem" }}>

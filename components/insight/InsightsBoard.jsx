@@ -7,13 +7,21 @@ import { createPageUrl } from "@/utils";
 import { INSIGHTS } from "@/lib/seedContent";
 import ShareRow from "@/components/common/ShareRow";
 import EmptyState from "@/components/common/EmptyState";
+import { STORAGE_KEYS } from "@/lib/theme";
 import { LightbulbIcon, LandmarkIcon, SearchIcon } from "lucide-react";
 
 export default function InsightsBoard({ kind }) {
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState(null);
-  const [saved, setSaved] = useState([]);
+  const [saved, setSaved] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.savedInsights) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
 
   const { data: rows } = useQuery({
     queryKey: ["insights", kind],
@@ -45,7 +53,15 @@ export default function InsightsBoard({ kind }) {
 
   const toggleSaved = (item) => {
     const key = `${item.kind}:${item.title}`;
-    setSaved((prev) => (prev.includes(key) ? prev.filter((value) => value !== key) : [...prev, key]));
+    setSaved((prev) => {
+      const next = prev.includes(key) ? prev.filter((value) => value !== key) : [...prev, key];
+      try {
+        localStorage.setItem(STORAGE_KEYS.savedInsights, JSON.stringify(next));
+      } catch {
+        // saving is a convenience; the board still works without storage
+      }
+      return next;
+    });
   };
 
   const icon = kind === "theological" ? LightbulbIcon : LandmarkIcon;

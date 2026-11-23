@@ -1,87 +1,70 @@
-import React, { useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchPublicCollection, likeRevelation, submitRevelation } from "@/lib/contentApi";
+import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { useAuth } from "@/lib/AuthContext";
-import { COMMUNITY_POSTS, LIVE_SESSIONS, DISCUSSION_GROUPS } from "@/lib/seedContent";
-import EmptyState from "@/components/common/EmptyState";
-import { UsersIcon, LightbulbIcon, VideoIcon, MessageCircleIcon, HeartIcon, SendIcon, Loader2Icon } from "lucide-react";
-import { fse2 } from "@/api/fse2Client";
+import { useQuery } from "@tanstack/react-query";
+import { fetchPublicCollection } from "@/lib/contentApi";
+import { COMMUNITY_POSTS, DISCUSSION_GROUPS, LIVE_SESSIONS } from "@/lib/seedContent";
+import { safeText } from "@/lib/format";
+import { LightbulbIcon, VideoIcon, UsersIcon, MessageCircleIcon, HeartIcon, ArrowRightIcon } from "lucide-react";
 
+const HUBS = [
+  {
+    page: "CommunityRevelations",
+    label: "Revelations",
+    title: "What God showed you",
+    description: "Share what the Lord is showing you, and encourage other readers with one honest word.",
+    icon: LightbulbIcon,
+    accent: "#a9852e",
+    tint: "#fdf5e7"
+  },
+  {
+    page: "CommunityLiveTeaching",
+    label: "Live teaching",
+    title: "Gather around the Word",
+    description: "Live sessions with prayer and discussion, in English and Luganda.",
+    icon: VideoIcon,
+    accent: "#2f5d8a",
+    tint: "#eef4fa"
+  },
+  {
+    page: "DiscussionGroups",
+    label: "Discussion groups",
+    title: "Study it together",
+    description: "Small groups reading the same passage, one chapter a week, one question each.",
+    icon: UsersIcon,
+    accent: "#1d4035",
+    tint: "#eef4f1"
+  }
+];
 
 export default function Community() {
-  const { user, isAuthenticated } = useAuth();
-  const email = user?.email || null;
-  const queryClient = useQueryClient();
-  const [tab, setTab] = useState("revelations");
-  const [title, setTitle] = useState("");
-  const [passage, setPassage] = useState("");
-  const [body, setBody] = useState("");
-  const [status, setStatus] = useState("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  const { data: postRows } = useQuery({
+  const { data: revelationRows } = useQuery({
     queryKey: ["revelations"],
-    queryFn: () => fetchPublicCollection("revelations", { authenticated: isAuthenticated })
+    queryFn: () => fetchPublicCollection("revelations")
   });
-
-  const { data: sessionRows } = useQuery({
-    queryKey: ["liveSessions"],
-    queryFn: () => fetchPublicCollection("liveSessions", { authenticated: isAuthenticated })
-  });
-
   const { data: groupRows } = useQuery({
-    queryKey: ["discussionGroups"],
-    queryFn: () => fetchPublicCollection("groups", { authenticated: isAuthenticated })
+    queryKey: ["discussion-groups"],
+    queryFn: () => fetchPublicCollection("groups")
+  });
+  const { data: sessionRows } = useQuery({
+    queryKey: ["live-sessions"],
+    queryFn: () => fetchPublicCollection("liveSessions")
   });
 
-  const postMutation = useMutation({
-    mutationFn: (payload) => submitRevelation(payload),
-    onSuccess: () => {
-      setStatus("success");
-      setTitle("");
-      setPassage("");
-      setBody("");
-      queryClient.invalidateQueries({ queryKey: ["revelations"] });
-    },
-    onError: (err) => {
-      setStatus("error");
-      setErrorMsg(err.message || "Could not share that. Please try again.");
-    }
-  });
-
-  const likeMutation = useMutation({
-    mutationFn: (id) => likeRevelation(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["revelations"] })
-  });
-
-  const posts = useMemo(() => {
-    if (postRows && postRows.length) return postRows;
-    return COMMUNITY_POSTS.map((item) => ({ ...item, id: `seed-${item.title}` }));
-  }, [postRows]);
-
-  const sessions = sessionRows && sessionRows.length ? sessionRows : LIVE_SESSIONS;
-  const groups = groupRows && groupRows.length ? groupRows : DISCUSSION_GROUPS;
-
-  const submit = (event) => {
-    event.preventDefault();
-    setErrorMsg("");
-    if (!title.trim() || !body.trim()) {
-      setStatus("error");
-      setErrorMsg("Add a title and your reflection.");
-      return;
-    }
-    setStatus("loading");
-    postMutation.mutate({
-      title: title.trim(),
-      passage: passage.trim(),
-      body: body.trim(),
-      owner_email: email,
-      author_name: user?.full_name || email,
-      likes: 0
+  const latest = useMemo(() => {
+    const live = (revelationRows || []).filter((row) => !row.parent_id);
+    const merged = [...live];
+    COMMUNITY_POSTS.forEach((post, index) => {
+      if (!merged.some((row) => safeText(row.title) === safeText(post.title))) {
+        merged.push({ ...post, id: `seed-${index}` });
+      }
     });
-  };
+    return merged.slice(0, 3);
+  }, [revelationRows]);
+
+  const groupCount = (groupRows || []).length || DISCUSSION_GROUPS.length;
+  const sessionCount = (sessionRows || []).length || LIVE_SESSIONS.length;
+  const revelationCount = (revelationRows || []).filter((row) => !row.parent_id).length || COMMUNITY_POSTS.length;
 
   return (
     <div>
@@ -89,220 +72,104 @@ export default function Community() {
         <div className="pr-container">
           <span className="pr-eyebrow pr-eyebrow-light">Community</span>
           <h1 className="pr-serif" style={{ margin: "10px 0 0", color: "#fff", fontSize: "2.2rem" }}>
-            Read alone, but not by yourself
+            You are not reading alone
           </h1>
-          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.8)", maxWidth: "60ch" }}>
-            Share what God is doing in your reading, join a live teaching, or find a group that studies the same
-            passage with you.
+          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.8)", maxWidth: "62ch" }}>
+            Share what God is showing you, join a live session, or settle in with a small group reading the same
+            passage you are reading tonight.
           </p>
         </div>
       </section>
 
       <div className="pr-container pr-section">
-        <div className="pr-tabs" style={{ marginBottom: 22 }}>
-          <button
-            type="button"
-            className={`pr-tab ${tab === "revelations" ? "pr-tab-active" : ""}`}
-            onClick={() => setTab("revelations")}
-          >
-            <LightbulbIcon className="h-4 w-4" style={{ display: "inline" }} /> Revelations
-          </button>
-          <button
-            type="button"
-            className={`pr-tab ${tab === "teaching" ? "pr-tab-active" : ""}`}
-            onClick={() => setTab("teaching")}
-          >
-            <VideoIcon className="h-4 w-4" style={{ display: "inline" }} /> Live teaching
-          </button>
-          <button
-            type="button"
-            className={`pr-tab ${tab === "groups" ? "pr-tab-active" : ""}`}
-            onClick={() => setTab("groups")}
-          >
-            <UsersIcon className="h-4 w-4" style={{ display: "inline" }} /> Discussion groups
-          </button>
+        <div className="pr-grid pr-grid-3">
+          {HUBS.map((hub) => (
+            <Link
+              key={hub.page}
+              to={createPageUrl(hub.page)}
+              className="pr-card pr-card-hover pr-card-pad"
+              style={{ display: "block", textDecoration: "none" }}
+            >
+              <span
+                className="pr-badge"
+                style={{ background: hub.tint, color: hub.accent }}
+              >
+                <hub.icon className="h-3 w-3" /> {hub.label}
+              </span>
+              <h2 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.12rem", fontWeight: 800 }}>
+                {hub.title}
+              </h2>
+              <p style={{ margin: "10px 0 0", fontSize: "0.9rem", lineHeight: 1.7 }}>{hub.description}</p>
+              <span className="pr-link" style={{ display: "inline-block", marginTop: 14, fontSize: "0.85rem" }}>
+                Open {hub.label.toLowerCase()} <ArrowRightIcon className="h-4 w-4" style={{ display: "inline" }} />
+              </span>
+            </Link>
+          ))}
         </div>
 
-        {tab === "revelations" ? (
-          <div className="pr-grid" style={{ gridTemplateColumns: "1fr", gap: 24 }}>
-            <div className="pr-grid pr-grid-2">
-              {posts.map((post) => (
-                <div key={post.id || post.title} className="pr-card pr-card-pad">
-                  {post.passage ? (
-                    <span className="pr-badge pr-badge-outline">{post.passage}</span>
-                  ) : null}
-                  <h2 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
-                    {post.title}
-                  </h2>
-                  <p style={{ margin: "10px 0 0", fontSize: "0.92rem" }}>{post.body}</p>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "0.8rem" }}>{post.author_name}</span>
-                    <button
-                      type="button"
-                      className="pr-chip"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => post.id && !String(post.id).startsWith("seed-") && likeMutation.mutate(post.id)}
-                    >
-                      <HeartIcon className="h-4 w-4" /> {post.likes || 0}
-                    </button>
-                    <Link to={createPageUrl("BibleReader")} className="pr-link" style={{ fontSize: "0.82rem" }}>
-                      Open the passage
-                    </Link>
+        <div className="pr-grid pr-grid-3" style={{ marginTop: 18 }}>
+          <div className="pr-stat">
+            <p className="pr-stat-value">{revelationCount}</p>
+            <p className="pr-stat-label">Revelations shared</p>
+          </div>
+          <div className="pr-stat">
+            <p className="pr-stat-value">{groupCount}</p>
+            <p className="pr-stat-label">Discussion groups</p>
+          </div>
+          <div className="pr-stat">
+            <p className="pr-stat-value">{sessionCount}</p>
+            <p className="pr-stat-label">Live sessions</p>
+          </div>
+        </div>
+      </div>
+
+      <section className="pr-section-tight" style={{ background: "var(--pr-ivory-soft)" }}>
+        <div className="pr-container">
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <span className="pr-eyebrow">Latest from the community</span>
+              <h2 className="pr-section-title" style={{ fontSize: "1.6rem" }}>
+                What readers are sharing
+              </h2>
+            </div>
+            <Link to={createPageUrl("CommunityRevelations")} className="pr-link" style={{ fontSize: "0.88rem" }}>
+              See all revelations <ArrowRightIcon className="h-4 w-4" style={{ display: "inline" }} />
+            </Link>
+          </div>
+
+          {latest.length === 0 ? (
+            <p style={{ marginTop: 18 }}>No revelations have been shared yet. Be the first.</p>
+          ) : (
+            <div className="pr-grid pr-grid-3" style={{ marginTop: 20 }}>
+              {latest.map((post) => (
+                <article key={post.id} className="pr-card pr-card-pad">
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="pr-badge pr-badge-gold">{safeText(post.author_name) || "Reader"}</span>
+                    {post.passage ? <span className="pr-badge pr-badge-outline">{safeText(post.passage)}</span> : null}
                   </div>
-                </div>
+                  <h3 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1rem", fontWeight: 800 }}>
+                    {safeText(post.title)}
+                  </h3>
+                  <p style={{ margin: "10px 0 0", fontSize: "0.89rem", lineHeight: 1.7 }}>
+                    {String(safeText(post.body)).slice(0, 180)}
+                    {String(safeText(post.body)).length > 180 ? "…" : ""}
+                  </p>
+                  <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: "0.8rem", color: "var(--pr-body)" }}>
+                    <span>
+                      <HeartIcon className="h-4 w-4" style={{ display: "inline", color: "var(--pr-gold-deep)" }} />{" "}
+                      {Number(post.likes || 0)}
+                    </span>
+                    <span>
+                      <MessageCircleIcon className="h-4 w-4" style={{ display: "inline", color: "var(--pr-gold-deep)" }} />{" "}
+                      Join the conversation
+                    </span>
+                  </div>
+                </article>
               ))}
             </div>
-
-            <div className="pr-card pr-card-pad">
-              <h2 className="pr-heading" style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800 }}>
-                Share a revelation
-              </h2>
-              <p style={{ margin: "8px 0 0", fontSize: "0.88rem" }}>
-                {isAuthenticated
-                  ? "What did you see in the Word this week? Others are praying through the same passage."
-                  : "Sign in to share what God is doing in your reading."}
-              </p>
-
-              {status === "success" ? (
-                <div className="pr-success" style={{ marginTop: 14 }}>
-                  Shared. Thank you for encouraging the fellowship.
-                </div>
-              ) : (
-                <form onSubmit={submit} style={{ marginTop: 14 }}>
-                  <div className="pr-field">
-                    <label className="pr-label" htmlFor="revelation-title">
-                      Title
-                    </label>
-                    <input
-                      id="revelation-title"
-                      className="pr-input"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="God met me in the last verse of Psalm 23"
-                      disabled={!isAuthenticated}
-                    />
-                  </div>
-                  <div className="pr-field">
-                    <label className="pr-label" htmlFor="revelation-passage">
-                      Passage
-                    </label>
-                    <input
-                      id="revelation-passage"
-                      className="pr-input"
-                      value={passage}
-                      onChange={(event) => setPassage(event.target.value)}
-                      placeholder="Psalm 23:6"
-                      disabled={!isAuthenticated}
-                    />
-                  </div>
-                  <div className="pr-field">
-                    <label className="pr-label" htmlFor="revelation-body">
-                      Your reflection
-                    </label>
-                    <textarea
-                      id="revelation-body"
-                      className="pr-textarea"
-                      value={body}
-                      onChange={(event) => setBody(event.target.value)}
-                      placeholder="What did the passage show you?"
-                      disabled={!isAuthenticated}
-                    />
-                  </div>
-                  {status === "error" ? <div className="pr-error">{errorMsg}</div> : null}
-                  <button
-                    type="submit"
-                    className="pr-btn pr-btn-primary"
-                    style={{ marginTop: 12 }}
-                    disabled={status === "loading" || !isAuthenticated}
-                  >
-                    {status === "loading" ? (
-                      <Loader2Icon className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <SendIcon className="h-4 w-4" />
-                    )}
-                    {status === "loading" ? "Sharing…" : "Share it"}
-                  </button>
-                  {!isAuthenticated ? (
-                    <p style={{ margin: "12px 0 0", fontSize: "0.82rem" }}>
-                      <Link to={createPageUrl("Login")} className="pr-link">
-                        Sign in
-                      </Link>{" "}
-                      to share.
-                    </p>
-                  ) : null}
-                </form>
-              )}
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "teaching" ? (
-          <div className="pr-grid pr-grid-2">
-            {sessions.map((session) => (
-              <div key={session.title} className="pr-card pr-card-pad">
-                <span className="pr-badge pr-badge-gold">{session.session_date}</span>
-                <h2 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
-                  {session.title}
-                </h2>
-                <p style={{ margin: "6px 0 0", fontSize: "0.82rem", color: "var(--pr-gold-deep)", fontWeight: 700 }}>
-                  Hosted by {session.host}
-                </p>
-                <p style={{ margin: "10px 0 0", fontSize: "0.9rem" }}>{session.description}</p>
-                <a
-                  href={session.join_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pr-btn pr-btn-primary pr-btn-sm"
-                  style={{ marginTop: 14 }}
-                >
-                  <VideoIcon className="h-4 w-4" />
-                  Join the session
-                </a>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {tab === "groups" ? (
-          <div className="pr-grid pr-grid-3">
-            {groups.map((group) => (
-              <div key={group.name} className="pr-card pr-card-pad">
-                <UsersIcon className="h-5 w-5" style={{ color: "var(--pr-gold-deep)" }} />
-                <h2 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.05rem", fontWeight: 800 }}>
-                  {group.name}
-                </h2>
-                <p style={{ margin: "8px 0 0", fontSize: "0.9rem" }}>{group.description}</p>
-                <p style={{ margin: "10px 0 0", fontSize: "0.8rem", color: "var(--pr-body)" }}>
-                  {group.schedule} · {group.member_count} members
-                </p>
-                <button
-                  type="button"
-                  className="pr-btn pr-btn-outline pr-btn-sm"
-                  style={{ marginTop: 14 }}
-                  onClick={() => {
-                    if (!isAuthenticated) {
-                      window.location.href = createPageUrl("Login");
-                      return;
-                    }
-                    window.location.href = createPageUrl("Dashboard");
-                  }}
-                >
-                  <MessageCircleIcon className="h-4 w-4" />
-                  Join the group
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {posts.length === 0 && tab === "revelations" ? (
-          <EmptyState
-            icon={LightbulbIcon}
-            title="No revelations yet"
-            description="Be the first to share what God showed you this week."
-          />
-        ) : null}
-      </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
