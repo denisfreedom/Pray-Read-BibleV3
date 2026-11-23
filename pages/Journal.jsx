@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { toISODate } from "@/lib/reading";
+import { recordReading, findPlanDay } from "@/lib/readings";
+import { fetchPublicCollection } from "@/lib/contentApi";
 import JournalForm from "@/components/journal/JournalForm";
 import JournalCard from "@/components/journal/JournalCard";
 import Spinner from "@/components/common/Spinner";
@@ -34,6 +36,11 @@ export default function Journal() {
     enabled: !!email
   });
 
+  const { data: planRows = [] } = useQuery({
+    queryKey: ["readingPlan"],
+    queryFn: () => fetchPublicCollection("plan", { authenticated: !!email })
+  });
+
   const entries = useMemo(() => {
     if (!email) return [];
     const mine = (journalRows || []).filter((row) => row.owner_email === email);
@@ -42,10 +49,24 @@ export default function Journal() {
   }, [journalRows, email, filter]);
 
   const saveMutation = useMutation({
-    mutationFn: (payload) =>
-      payload.id
-        ? fse2.entities.JournalEntry.update(payload.id, payload.data)
-        : fse2.entities.JournalEntry.create(payload.data),
+    mutationFn: async (payload) => {
+      const record = payload.id
+        ? await fse2.entities.JournalEntry.update(payload.id, payload.data)
+        : await fse2.entities.JournalEntry.create(payload.data);
+      // Writing about a passage also counts as reading it, so the reading
+      // plan and the streak stay in step with the journal.
+      if (!payload.id && payload.data.book && payload.data.chapter) {
+        await recordReading({
+          email,
+          book: payload.data.book,
+          chapter: payload.data.chapter,
+          translation: "en",
+          planDay: findPlanDay(planRows, payload.data.book, payload.data.chapter)
+        });
+        await queryClient.invalidateQueries({ queryKey: ["readings", email] });
+      }
+      return record;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["journalEntries"] });
       setShowForm(false);

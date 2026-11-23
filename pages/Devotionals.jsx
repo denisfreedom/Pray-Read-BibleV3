@@ -1,6 +1,6 @@
 import React from "react";
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { useAuth } from "@/lib/AuthContext";
 import { Link } from "react-router-dom";
@@ -9,6 +9,7 @@ import { DEVOTIONALS } from "@/lib/seedContent";
 import { formatLugandaDevotional, formatEnglishDevotional } from "@/lib/luganda";
 import { devotionalShareText } from "@/lib/share";
 import { STORAGE_KEYS, DEFAULT_COVER } from "@/lib/theme";
+import { toISODate } from "@/lib/reading";
 import Modal from "@/components/common/Modal";
 import ShareRow from "@/components/common/ShareRow";
 import { BookOpenIcon, CalendarIcon, FlameIcon, CheckCircleIcon, ListIcon } from "lucide-react";
@@ -24,7 +25,8 @@ const readDone = () => {
 };
 
 export default function Devotionals() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const queryClient = useQueryClient();
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("devotional");
   const [view, setView] = useState("list");
@@ -37,6 +39,29 @@ export default function Devotionals() {
     queryKey: ["devotionals"],
     queryFn: () => fetchPublicCollection("devotionals", { authenticated: isAuthenticated })
   });
+
+  const email = user?.email || null;
+
+  const { data: progressRows } = useQuery({
+    queryKey: ["devotionalProgress", email],
+    queryFn: () => fse2.entities.DevotionalProgress.list("-completed_date", 300),
+    enabled: !!email
+  });
+
+  // Completions saved on another device are merged into this device.
+  useEffect(() => {
+    if (!email || !progressRows) return;
+    const serverCodes = (progressRows || [])
+      .filter((row) => row.owner_email === email && row.devotional_code)
+      .map((row) => row.devotional_code);
+    if (!serverCodes.length) return;
+    setDone((current) => {
+      const merged = Array.from(new Set([...current, ...serverCodes]));
+      if (merged.length === current.length) return current;
+      localStorage.setItem(STORAGE_KEYS.doneDevotionals, JSON.stringify(merged));
+      return merged;
+    });
+  }, [progressRows, email]);
 
   const devotionals = useMemo(() => {
     if (rows && rows.length) return rows;
@@ -57,12 +82,26 @@ export default function Devotionals() {
   const current = devotionals.find((item) => item.code === openCode) || null;
   const streak = done.length;
 
-  const markComplete = (code) => {
+  const markComplete = async (code) => {
     if (done.includes(code)) return;
     const next = [...done, code];
     setDone(next);
     localStorage.setItem(STORAGE_KEYS.doneDevotionals, JSON.stringify(next));
-    setToast("Marked as complete");
+    if (email) {
+      try {
+        await fse2.entities.DevotionalProgress.create({
+          owner_email: email,
+          devotional_code: code,
+          completed_date: toISODate()
+        });
+        await queryClient.invalidateQueries({ queryKey: ["devotionalProgress", email] });
+        setToast("Marked as complete and saved to your account");
+      } catch {
+        setToast("Marked as complete on this device");
+      }
+    } else {
+      setToast("Marked as complete");
+    }
     window.setTimeout(() => setToast(""), 2000);
   };
 

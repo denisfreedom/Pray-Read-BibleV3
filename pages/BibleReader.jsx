@@ -6,6 +6,7 @@ import { fetchPublicCollection } from "@/lib/contentApi";
 import { useAuth } from "@/lib/AuthContext";
 import BookGrid from "@/components/read/BookGrid";
 import { offline } from "@/lib/offlineDb";
+import { getBookByNumber } from "@/lib/bibleBooks";
 import { ArrowLeftIcon, BookOpenIcon, CloudOffIcon } from "lucide-react";
 import { fse2 } from "@/api/fse2Client";
 
@@ -23,9 +24,19 @@ export default function BibleReader() {
       .getAll("chapters")
       .then((rows) => {
         if (!active) return;
-        const set = new Set();
+        // A book only counts as available offline when every one of its
+        // chapters is stored on this device.
+        const perBook = new Map();
         rows.forEach((row) => {
-          if (row && row.book_number) set.add(Number(row.book_number));
+          if (!row || !row.book_number) return;
+          const key = `${Number(row.book_number)}:${row.language || "en"}`;
+          perBook.set(key, (perBook.get(key) || 0) + 1);
+        });
+        const set = new Set();
+        perBook.forEach((count, key) => {
+          const bookNumber = Number(key.split(":")[0]);
+          const book = getBookByNumber(bookNumber);
+          if (book && book.chapters && count >= book.chapters) set.add(bookNumber);
         });
         setDownloaded(set);
         setOfflineReady(true);

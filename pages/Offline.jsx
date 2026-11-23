@@ -9,6 +9,8 @@ import { bytesToMb } from "@/lib/format";
 import { fetchChapter } from "@/lib/bibleApi";
 import { DownloadIcon, Trash2Icon, HardDriveIcon, CheckCircleIcon, Loader2Icon, BookOpenIcon, ArrowLeftIcon } from "lucide-react";
 
+const PLAN_BOOKS = ["John", "Psalms"];
+
 const SECTIONS = [
   { id: "bible", label: "Bible chapters", entity: "chapters" },
   { id: "verses", label: "Verses", entity: "verses" },
@@ -26,6 +28,8 @@ export default function Offline() {
   const [progress, setProgress] = useState({ label: "", done: 0, total: 0 });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [bookScope, setBookScope] = useState("plan");
+  const [language, setLanguage] = useState("en");
 
   const refresh = async () => {
     const next = {};
@@ -49,26 +53,40 @@ export default function Offline() {
     setBusy(true);
     setStatus("");
     try {
-      if (selected.includes("bible") || selected.includes("verses")) {
-        for (const book of BIBLE_BOOKS) {
-          setProgress({ label: `${book.name} 1`, done: book.number, total: BIBLE_BOOKS.length });
-          try {
-            const data = await fetchChapter({
-              bookNumber: book.number,
-              bookName: book.name,
-              chapter: 1,
-              language: "en"
-            });
-            await offline.put("chapters", chapterKey(book.number, 1), data);
-            await offline.put(
-              "verses",
-              `${book.number}:1`,
-              (data.verses || []).map((verse) => ({ ...verse, book: book.name, book_number: book.number, chapter: 1 }))
-            );
-          } catch {
-            // A missing chapter must not stop the rest of the download.
+      if (selected.includes("bible")) {
+        const books =
+          bookScope === "all" ? BIBLE_BOOKS : BIBLE_BOOKS.filter((book) => PLAN_BOOKS.includes(book.name));
+        const total = books.reduce((sum, book) => sum + (book.chapters || 0), 0);
+        let done = 0;
+        for (const book of books) {
+          for (let chapter = 1; chapter <= (book.chapters || 0); chapter += 1) {
+            setProgress({ label: `${book.name} ${chapter}`, done, total });
+            try {
+              const data = await fetchChapter({
+                bookNumber: book.number,
+                bookName: book.name,
+                chapter,
+                language
+              });
+              await offline.put("chapters", chapterKey(book.number, chapter, language), data);
+              if (selected.includes("verses")) {
+                await offline.put(
+                  "verses",
+                  `${book.number}:${chapter}`,
+                  (data.verses || []).map((verse) => ({
+                    ...verse,
+                    book: book.name,
+                    book_number: book.number,
+                    chapter
+                  }))
+                );
+              }
+            } catch {
+              // A missing chapter must not stop the rest of the download.
+            }
+            done += 1;
+            await new Promise((resolve) => setTimeout(resolve, 0));
           }
-          await new Promise((resolve) => setTimeout(resolve, 0));
         }
       }
 
@@ -159,6 +177,36 @@ export default function Offline() {
             <p style={{ margin: "0 0 16px", fontSize: "0.88rem" }}>
               Choose what to store on this device, then run the download.
             </p>
+
+            <div className="pr-field" style={{ marginBottom: 12 }}>
+              <label className="pr-label" htmlFor="offline-scope">
+                Which books to store
+              </label>
+              <select
+                id="offline-scope"
+                className="pr-input"
+                value={bookScope}
+                onChange={(event) => setBookScope(event.target.value)}
+              >
+                <option value="plan">The reading plan books (John and Psalms)</option>
+                <option value="all">Every book in the Bible</option>
+              </select>
+            </div>
+
+            <div className="pr-field" style={{ marginBottom: 16 }}>
+              <label className="pr-label" htmlFor="offline-language">
+                Language
+              </label>
+              <select
+                id="offline-language"
+                className="pr-input"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+              >
+                <option value="en">English</option>
+                <option value="lu">Luganda</option>
+              </select>
+            </div>
 
             <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
               {SECTIONS.map((section) => (

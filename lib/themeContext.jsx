@@ -23,6 +23,20 @@ const toHex = (value) => {
   return null;
 };
 
+// The soft and deep tones are derived from the picked colours so the ivory
+// panels and the darker emerald sections keep their depth when the admin
+// changes the palette.
+const shift = (hex, amount) => {
+  const value = toHex(hex);
+  if (!value) return hex;
+  const number = parseInt(value.slice(1), 16);
+  const clamp = (channel) => Math.max(0, Math.min(255, Math.round(channel + amount)));
+  const r = clamp((number >> 16) & 255);
+  const g = clamp((number >> 8) & 255);
+  const b = clamp(number & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+};
+
 export function ThemeProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULTS);
   const { isAuthenticated } = useAuth();
@@ -51,9 +65,9 @@ export function ThemeProvider({ children }) {
     const emerald = toHex(settings.emerald) || DEFAULTS.emerald;
     const gold = toHex(settings.gold) || DEFAULTS.gold;
     root.style.setProperty("--pr-ivory", ivory);
-    root.style.setProperty("--pr-ivory-soft", ivory);
+    root.style.setProperty("--pr-ivory-soft", shift(ivory, -4));
     root.style.setProperty("--pr-emerald", emerald);
-    root.style.setProperty("--pr-emerald-deep", emerald);
+    root.style.setProperty("--pr-emerald-deep", shift(emerald, -12));
     root.style.setProperty("--pr-gold", gold);
     root.style.setProperty("--pr-gold-soft", `${gold}26`);
   }, [settings]);

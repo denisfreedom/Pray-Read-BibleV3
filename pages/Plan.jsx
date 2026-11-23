@@ -20,7 +20,7 @@ export default function Plan() {
   });
 
   const { data: readingRows, isLoading: readingsLoading } = useQuery({
-    queryKey: ["readings"],
+    queryKey: ["readings", email],
     queryFn: () => fse2.entities.Reading.list("-updated_date", 300),
     enabled: !!email
   });

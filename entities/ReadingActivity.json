@@ -1,0 +1,21 @@
+{
+  "name": "ReadingActivity",
+  "description": "One reading action by a reader: a chapter visit, a highlight, a bookmark or a note.",
+  "fields": [
+    { "name": "owner_email", "type": "string", "required": true, "label": "Owner" },
+    { "name": "activity_type", "type": "string", "required": true, "label": "Activity type" },
+    { "name": "book", "type": "string", "label": "Book" },
+    { "name": "book_number", "type": "number", "label": "Book number" },
+    { "name": "chapter", "type": "number", "label": "Chapter" },
+    { "name": "verse", "type": "number", "label": "Verse" }
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      {
+        "actions": ["create", "read", "update", "delete"],
+        "subject": { "roles": ["owner", "admin", "user", "authenticated"] }
+      }
+    ]
+  }
+}

@@ -110,6 +110,7 @@ export default function AdminDashboard() {
   const [message, setMessage] = useState("");
   const [importText, setImportText] = useState("");
   const [importKind, setImportKind] = useState("verses");
+  const [importBook, setImportBook] = useState("");
   const [importResult, setImportResult] = useState(null);
   const [settings, setSettings] = useState({ ivory: "#faf8f2", emerald: "#1d4035", gold: "#e9c981" });
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
@@ -223,7 +224,7 @@ export default function AdminDashboard() {
     setBusy(true);
     setImportResult(null);
     try {
-      const result = await callAdmin("bulkImport", { kind: importKind, text: importText });
+      const result = await callAdmin("bulkImport", { kind: importKind, text: importText, bookName: importBook });
       setImportResult(result);
       loadStats();
     } catch (err) {
@@ -387,8 +388,23 @@ export default function AdminDashboard() {
                 </h2>
                 <p style={{ margin: "0 0 14px", fontSize: "0.85rem" }}>
                   Paste chapters as blocks. Each block starts with book:chapter:verse, then the English text,
-                  then the Luganda text.
+                  then the Luganda text. Devotional blocks start with the code and then carry the title,
+                  title in Luganda, scripture, scripture in Luganda, body and body in Luganda.
                 </p>
+                {importKind === "verses" ? (
+                  <div className="pr-field" style={{ marginBottom: 12 }}>
+                    <label className="pr-label" htmlFor="import-book">
+                      Book name for these verses
+                    </label>
+                    <input
+                      id="import-book"
+                      className="pr-input"
+                      value={importBook}
+                      onChange={(event) => setImportBook(event.target.value)}
+                      placeholder="For example: John"
+                    />
+                  </div>
+                ) : null}
                 <div className="pr-tabs" style={{ borderBottom: "none" }}>
                   <button
                     type="button"
@@ -413,7 +429,7 @@ export default function AdminDashboard() {
                   placeholder={
                     importKind === "verses"
                       ? "19:23:1\nThe LORD is my shepherd; I shall not want.\nMukama ye musumba wange; seetaagenga."
-                      : "D-007\nTitle\nPsalm 23:1\nBody text"
+                      : "D-007\nThe Good Shepherd\nMfumu Mukaliro\nPsalm 23:1\nZabalam 23:1\nBody text\nAmateka y'omuliro"
                   }
                 />
                 <button type="button" className="pr-btn pr-btn-primary pr-btn-sm" style={{ marginTop: 12 }} onClick={runImport} disabled={busy}>

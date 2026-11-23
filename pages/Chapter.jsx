@@ -1,19 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fse2 } from "@/api/fse2Client";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { BIBLE_BOOKS, getBookByNumber } from "@/lib/bibleBooks";
 import { fetchChapter } from "@/lib/bibleApi";
 import { getCrossReferences } from "@/lib/crossRefs";
-import { offline } from "@/lib/offlineDb";
+import { offline, markKey } from "@/lib/offlineDb";
+import { logReadingActivity } from "@/lib/activity";
+import { findPlanDay, recordReading } from "@/lib/readings";
+import { fetchPublicCollection } from "@/lib/contentApi";
+import { formatDateLabel } from "@/lib/reading";
 import VerseActionBar from "@/components/read/VerseActionBar";
 import FloatingVerse from "@/components/read/FloatingVerse";
 import PassageTabs from "@/components/read/PassageTabs";
+import PassagePrayer from "@/components/read/PassagePrayer";
 import Spinner from "@/components/common/Spinner";
 import EmptyState from "@/components/common/EmptyState";
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, Volume2Icon, TypeIcon, LanguagesIcon, ListIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, CloudOffIcon, AlertCircleIcon, HeartHandshakeIcon, BookOpenIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, Volume2Icon, TypeIcon, LanguagesIcon, ListIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, CloudOffIcon, AlertCircleIcon, HeartHandshakeIcon, BookOpenIcon, CheckCircleIcon } from "lucide-react";
 
 const HIGHLIGHT_COLORS = {
   yellow: "#fde68a",
@@ -28,7 +33,8 @@ export default function Chapter() {
   const email = user?.email || null;
   const queryClient = useQueryClient();
 
-  const params = new URLSearchParams(window.location.search);
+  const [searchParams] = useSearchParams();
+  const params = searchParams;
   const bookNumber = Number(params.get("book")) || 19;
   const chapter = Math.max(1, Number(params.get("chapter")) || 1);
   const verseParam = Number(params.get("verse")) || 0;
@@ -41,8 +47,13 @@ export default function Chapter() {
   const [error, setError] = useState("");
   const [offlineCopy, setOfflineCopy] = useState(false);
   const [selectedVerse, setSelectedVerse] = useState(null);
+  const [prayerVerse, setPrayerVerse] = useState(null);
+  const [readingSaved, setReadingSaved] = useState(false);
+  const [readDate, setReadDate] = useState("");
   const [marks, setMarks] = useState([]);
+  const [localMarks, setLocalMarks] = useState([]);
   const [crossRef, setCrossRef] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [showChapterGrid, setShowChapterGrid] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -52,17 +63,66 @@ export default function Chapter() {
     enabled: !!email
   });
 
+  const { data: planRows = [] } = useQuery({
+    queryKey: ["readingPlan"],
+    queryFn: () => fetchPublicCollection("plan", { authenticated: !!email })
+  });
+
+  const { data: readingRows = [] } = useQuery({
+    queryKey: ["readings", email],
+    queryFn: () => fse2.entities.Reading.list("-updated_date", 300),
+    enabled: !!email
+  });
+
+  // Marks kept in the offline centre are loaded too, so a reader who is not
+  // signed in still sees the highlights, bookmarks and notes they saved.
   useEffect(() => {
-    if (!email) {
-      setMarks([]);
-      return;
-    }
-    setMarks(
-      (storedMarks || []).filter(
-        (row) => row.owner_email === email && row.book_number === book.number && row.chapter === chapter
-      )
-    );
-  }, [storedMarks, email, book.number, chapter]);
+    let active = true;
+    const loadLocal = async () => {
+      const collected = [];
+      const stores = [
+        { store: "highlights", type: "highlight" },
+        { store: "bookmarks", type: "bookmark" },
+        { store: "notes", type: "note" }
+      ];
+      for (const entry of stores) {
+        let rows = [];
+        try {
+          rows = (await offline.getAll(entry.store)) || [];
+        } catch {
+          rows = [];
+        }
+        rows
+          .filter((row) => row && row.book_number === book.number && row.chapter === chapter)
+          .forEach((row) => {
+            collected.push({ ...row, mark_type: row.mark_type || entry.type, source: "offline" });
+          });
+      }
+      if (!active) return;
+      setLocalMarks(collected);
+    };
+    loadLocal();
+    return () => {
+      active = false;
+    };
+  }, [book.number, chapter]);
+
+  useEffect(() => {
+    const server = email
+      ? (storedMarks || []).filter(
+          (row) => row.owner_email === email && row.book_number === book.number && row.chapter === chapter
+        )
+      : [];
+    const taken = new Set(server.map((row) => `${row.mark_type}:${row.verse}`));
+    const merged = [...server];
+    localMarks.forEach((row) => {
+      const key = `${row.mark_type}:${row.verse}`;
+      if (taken.has(key)) return;
+      taken.add(key);
+      merged.push(row);
+    });
+    setMarks(merged);
+  }, [storedMarks, localMarks, email, book.number, chapter]);
 
   useEffect(() => {
     let active = true;
@@ -98,7 +158,36 @@ export default function Chapter() {
     return () => {
       active = false;
     };
-  }, [book.number, book.name, chapter, language]);
+  }, [book.number, book.name, chapter, language, reloadToken]);
+
+  useEffect(() => {
+    if (!email) {
+      setReadingSaved(false);
+      setReadDate("");
+      return;
+    }
+    const match = (readingRows || []).find(
+      (row) =>
+        row.owner_email === email &&
+        String(row.book || "").toLowerCase() === String(book.name || "").toLowerCase() &&
+        Number(row.chapter) === Number(chapter) &&
+        row.status === "completed"
+    );
+    setReadingSaved(Boolean(match));
+    setReadDate(match ? match.read_date || "" : "");
+  }, [readingRows, email, book.name, chapter]);
+
+  useEffect(() => {
+    if (!email) return;
+    logReadingActivity({
+      email,
+      type: "chapter_visit",
+      book: book.name,
+      bookNumber: book.number,
+      chapter,
+      language
+    });
+  }, [email, book.number, book.name, chapter, language]);
 
   useEffect(() => {
     if (verseParam > 0) {
@@ -117,6 +206,12 @@ export default function Chapter() {
 
   const isBookmarked = (verse) => marks.some((row) => row.mark_type === "bookmark" && row.verse === verse);
 
+  const markStoreFor = (markType) => {
+    if (markType === "highlight") return "highlights";
+    if (markType === "bookmark") return "bookmarks";
+    return "notes";
+  };
+
   const saveMark = async (markType, verse, extra = {}) => {
     const payload = {
       owner_email: email,
@@ -127,12 +222,25 @@ export default function Chapter() {
       verse,
       ...extra
     };
+    const key = markKey(book.number, chapter, verse, markType);
     try {
       if (email) {
         await fse2.entities.StudyMark.create(payload);
         await queryClient.invalidateQueries({ queryKey: ["studyMarks", email] });
       }
-      await offline.put("highlights", `${book.number}:${chapter}:${verse}:${markType}`, payload);
+      await offline.put(markStoreFor(markType), key, payload);
+      setLocalMarks((rows) => [
+        ...rows.filter((row) => markKey(row.book_number, row.chapter, row.verse, row.mark_type) !== key),
+        { ...payload, source: "offline" }
+      ]);
+      logReadingActivity({
+        email,
+        type: markType === "bookmark" ? "bookmark" : markType === "note" ? "note_saved" : "highlight",
+        book: book.name,
+        bookNumber: book.number,
+        chapter,
+        verse
+      });
       setToast(markType === "highlight" ? "Highlight saved" : markType === "bookmark" ? "Bookmarked" : "Note saved");
     } catch (err) {
       setToast(err.message || "Could not save that.");
@@ -140,12 +248,23 @@ export default function Chapter() {
     window.setTimeout(() => setToast(""), 1800);
   };
 
+  const removeMark = async (existing, markType) => {
+    if (existing.id) {
+      fse2.entities.StudyMark.delete(existing.id).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ["studyMarks", email] });
+    }
+    const key = markKey(book.number, chapter, existing.verse, markType);
+    offline.remove(markStoreFor(markType), key).catch(() => {});
+    setLocalMarks((rows) => rows.filter((row) => markKey(row.book_number, row.chapter, row.verse, row.mark_type) !== key));
+    setMarks((rows) =>
+      rows.filter((row) => !(row.mark_type === markType && row.verse === existing.verse))
+    );
+  };
+
   const toggleHighlight = (verse, color) => {
     const existing = marks.find((row) => row.mark_type === "highlight" && row.verse === verse);
     if (existing) {
-      fse2.entities.StudyMark.delete(existing.id).catch(() => {});
-      queryClient.invalidateQueries({ queryKey: ["studyMarks", email] });
-      offline.remove("highlights", `${book.number}:${chapter}:${verse}:highlight`).catch(() => {});
+      removeMark(existing, "highlight");
       return;
     }
     saveMark("highlight", verse, { color });
@@ -154,15 +273,42 @@ export default function Chapter() {
   const toggleBookmark = (verse) => {
     const existing = marks.find((row) => row.mark_type === "bookmark" && row.verse === verse);
     if (existing) {
-      fse2.entities.StudyMark.delete(existing.id).catch(() => {});
-      queryClient.invalidateQueries({ queryKey: ["studyMarks", email] });
+      removeMark(existing, "bookmark");
       return;
     }
     saveMark("bookmark", verse);
   };
 
+  const noteFor = (verse) => {
+    const mark = marks.find((row) => row.mark_type === "note" && row.verse === verse);
+    return mark ? mark.note_text || "" : "";
+  };
+
+  const markAsRead = async () => {
+    if (!email) {
+      setToast("Sign in to keep your reading progress.");
+      window.setTimeout(() => setToast(""), 2000);
+      return;
+    }
+    const planDay = findPlanDay(planRows, book.name, chapter);
+    const record = await recordReading({
+      email,
+      book: book.name,
+      chapter,
+      translation: language,
+      planDay
+    });
+    if (record) {
+      await queryClient.invalidateQueries({ queryKey: ["readings", email] });
+      setToast(planDay ? `Marked as read. Plan day ${planDay} is complete.` : "Marked as read.");
+    } else {
+      setToast("Could not save that. Try again in a moment.");
+    }
+    window.setTimeout(() => setToast(""), 2200);
+  };
+
   const goToChapter = (number) => {
-    navigate(createPageUrl("Chapter") + `?book=${book.number}&chapter=${number}`);
+    navigate(createPageUrl("Chapter") + `?book=${book.number}&chapter=${number}&lang=${language}`);
   };
 
   const stepChapter = (delta) => {
@@ -175,7 +321,7 @@ export default function Chapter() {
     const index = BIBLE_BOOKS.findIndex((item) => item.number === book.number);
     const nextBook = BIBLE_BOOKS.at(index + 1);
     if (nextBook) {
-      navigate(createPageUrl("Chapter") + `?book=${nextBook.number}&chapter=1`);
+      navigate(createPageUrl("Chapter") + `?book=${nextBook.number}&chapter=1&lang=${language}`);
     }
   };
 
@@ -261,6 +407,20 @@ export default function Chapter() {
               <a href={audioUrl} target="_blank" rel="noopener noreferrer" className="pr-chip" style={{ textDecoration: "none" }}>
                 <Volume2Icon className="h-4 w-4" /> Listen
               </a>
+              <button
+                type="button"
+                className="pr-chip"
+                style={{
+                  cursor: "pointer",
+                  background: readingSaved ? "var(--pr-emerald)" : undefined,
+                  color: readingSaved ? "#fff" : undefined,
+                  borderColor: readingSaved ? "var(--pr-emerald)" : undefined
+                }}
+                onClick={markAsRead}
+              >
+                <CheckCircleIcon className="h-4 w-4" />
+                {readingSaved ? `Read on ${formatDateLabel(readDate)}` : "Mark as read"}
+              </button>
             </div>
           </div>
 
@@ -313,7 +473,11 @@ export default function Chapter() {
                 title="This chapter could not be loaded"
                 description={error}
                 action={
-                  <button type="button" className="pr-btn pr-btn-primary" onClick={() => goToChapter(chapter)}>
+                  <button
+                    type="button"
+                    className="pr-btn pr-btn-primary"
+                    onClick={() => setReloadToken((value) => value + 1)}
+                  >
                     Try again
                   </button>
                 }
@@ -342,6 +506,7 @@ export default function Chapter() {
                             }
                             setCrossRef(first);
                           }}
+                          onPrayer={(number) => setPrayerVerse((current) => (current === number ? null : number))}
                           onClose={() => setSelectedVerse(null)}
                         />
                       ) : null}
@@ -367,6 +532,34 @@ export default function Chapter() {
                           {verse.text}
                         </span>
                       </button>
+                      {prayerVerse === verse.verse ? (
+                        <PassagePrayer
+                          book={book.name}
+                          chapter={chapter}
+                          verse={verse.verse}
+                          language={language}
+                          onClose={() => setPrayerVerse(null)}
+                        />
+                      ) : null}
+                      {noteFor(verse.verse) ? (
+                        <div
+                          style={{
+                            margin: "2px 0 12px",
+                            padding: "10px 12px",
+                            borderLeft: "3px solid var(--pr-gold)",
+                            background: "var(--pr-ivory-soft)",
+                            borderRadius: "0 8px 8px 0",
+                            fontSize: "0.9rem",
+                            color: "var(--pr-body)",
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "flex-start"
+                          }}
+                        >
+                          <NotebookPenIcon className="h-4 w-4" style={{ flex: "0 0 auto", marginTop: 2 }} />
+                          <span>{noteFor(verse.verse)}</span>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -416,7 +609,7 @@ export default function Chapter() {
           reference={`${getBookByNumber(crossRef.book)?.name || "Passage"} ${crossRef.chapter}:${crossRef.verse}`}
           verseText={crossRef.text}
           onClose={() => setCrossRef(null)}
-          chapterUrl={`?book=${crossRef.book}&chapter=${crossRef.chapter}&verse=${crossRef.verse}`}
+          chapterUrl={`?book=${crossRef.book}&chapter=${crossRef.chapter}&verse=${crossRef.verse}&lang=${language}`}
         />
       ) : null}
 

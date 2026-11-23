@@ -205,14 +205,25 @@ Deno.serve(async (req) => {
             errors.push("Skipped a block without a devotional code.");
             continue;
           }
+          // Seven lines carry the full bilingual set, the older five line
+          // format is still accepted so past imports keep working.
+          const values = lines.length >= 7
+            ? {
+                title: lines[0] || "",
+                title_lu: lines[1] || "",
+                scripture: lines[2] || "",
+                scripture_lu: lines[3] || "",
+                body: lines[4] || "",
+                body_lu: lines[5] || ""
+              }
+            : {
+                title: lines[0] || "",
+                scripture: lines[1] || "",
+                body: lines[2] || "",
+                body_lu: lines[3] || ""
+              };
           try {
-            const record = await fse2.entities.Devotional.create({
-              code,
-              title: lines[0] || "",
-              scripture: lines[1] || "",
-              body: lines[2] || "",
-              body_lu: lines[3] || ""
-            });
+            const record = await fse2.entities.Devotional.create({ code, ...values });
             inserted.push(record);
           } catch (error) {
             errors.push(`${code}  -  ${error.message}`);

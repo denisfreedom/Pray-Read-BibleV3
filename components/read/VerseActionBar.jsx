@@ -6,6 +6,7 @@ import {
   Share2Icon,
   NotebookPenIcon,
   Link2Icon,
+  HeartHandshakeIcon,
   XIcon
 } from "lucide-react";
 import { copyToClipboard } from "@/lib/share";
@@ -17,7 +18,7 @@ const COLORS = [
   { id: "blue", label: "Blue", value: "#bfdbfe" }
 ];
 
-export default function VerseActionBar({ verse, onHighlight, onBookmark, onNote, onCrossRef, onClose }) {
+export default function VerseActionBar({ verse, onHighlight, onBookmark, onNote, onCrossRef, onPrayer, onClose }) {
   const [note, setNote] = useState("");
   const [showNote, setShowNote] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -87,6 +88,11 @@ export default function VerseActionBar({ verse, onHighlight, onBookmark, onNote,
         <button type="button" className="pr-chip" onClick={() => onCrossRef(verse.verse)} style={{ cursor: "pointer" }}>
           <Link2Icon className="h-4 w-4" /> Cross-references
         </button>
+        {onPrayer ? (
+          <button type="button" className="pr-chip" onClick={() => onPrayer(verse.verse)} style={{ cursor: "pointer" }}>
+            <HeartHandshakeIcon className="h-4 w-4" /> Prayer
+          </button>
+        ) : null}
       </div>
 
       {showNote ? (

@@ -8,9 +8,10 @@ import Home from "@/pages/Home";
 import { offline } from "@/lib/offlineDb";
 import { STORAGE_KEYS } from "@/lib/theme";
 import { bytesToMb } from "@/lib/format";
-import { computeStreak } from "@/lib/reading";
+import { computeStreak, formatDateLabel } from "@/lib/reading";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { BIBLE_BOOKS, getBookByNumber } from "@/lib/bibleBooks";
+import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import { BookOpenIcon, FlameIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, DownloadIcon, CheckCircleIcon, MusicIcon, HandHeartIcon } from "lucide-react";
 
 const readDone = () => {
@@ -27,7 +28,7 @@ export default function Dashboard() {
   const [offlineCounts, setOfflineCounts] = useState({ chapters: 0, verses: 0, storage: 0 });
 
   const { data: readings } = useQuery({
-    queryKey: ["readings"],
+    queryKey: ["readings", email],
     queryFn: () => fse2.entities.Reading.list("-updated_date", 300),
     enabled: !!email
   });
@@ -88,6 +89,11 @@ export default function Dashboard() {
   );
   const saved = savedPrayers || [];
   const doneLocal = readDone();
+  // A devotional can be completed on this device or on another one, so the
+  // two lists are merged instead of added together.
+  const devotionalsDone = new Set(
+    [...doneLocal, ...completedDevotionals.map((row) => row.devotional_code).filter(Boolean)]
+  ).size;
   const streak = useMemo(() => computeStreak(myReadings), [myReadings]);
 
   const completedRows = useMemo(() => {
@@ -149,7 +155,7 @@ export default function Dashboard() {
             <p className="pr-stat-label">Highlights & notes</p>
           </div>
           <div className="pr-stat">
-            <p className="pr-stat-value">{doneLocal.length + completedDevotionals.length}</p>
+            <p className="pr-stat-value">{devotionalsDone}</p>
             <p className="pr-stat-label">Devotionals done</p>
           </div>
         </div>
@@ -165,12 +171,12 @@ export default function Dashboard() {
                   {lastReading.book} {lastReading.chapter}
                 </p>
                 <p style={{ margin: "6px 0 0", fontSize: "0.85rem" }}>
-                  Last read {lastReading.read_date || "recently"}
+                  Last read {lastReading.read_date ? formatDateLabel(lastReading.read_date) : "recently"}
                 </p>
                 <Link
                   to={
                     createPageUrl("Chapter") +
-                    `?book=${lastBook ? lastBook.number : 19}&chapter=${lastReading.chapter || 1}`
+                    `?book=${lastBook ? lastBook.number : 19}&chapter=${lastReading.chapter || 1}&lang=${lastReading.translation === "lu" ? "lu" : "en"}`
                   }
                   className="pr-btn pr-btn-primary pr-btn-sm"
                   style={{ marginTop: 14 }}
@@ -331,6 +337,10 @@ export default function Dashboard() {
               Open the prayer library →
             </Link>
           </div>
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <ActivityFeed />
         </div>
 
         <div className="pr-grid pr-grid-3" style={{ marginTop: 22 }}>
