@@ -166,6 +166,9 @@
 .capitalize {
     text-transform: capitalize
 }
+.italic {
+    font-style: italic
+}
 .leading-8 {
     line-height: 2rem
 }

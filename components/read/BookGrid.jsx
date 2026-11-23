@@ -1,12 +1,30 @@
 import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ChevronRightIcon, DownloadIcon, SearchIcon } from "lucide-react";
+import { ChevronRightIcon, CloudOffIcon, SearchIcon } from "lucide-react";
 import { OLD_TESTAMENT, NEW_TESTAMENT } from "@/lib/bibleBooks";
 
 const SECTIONS = [
-  { key: "old", label: "Old Testament", books: OLD_TESTAMENT, count: 39, accent: "#b98428", tint: "#fdf5e7" },
-  { key: "new", label: "New Testament", books: NEW_TESTAMENT, count: 27, accent: "#2f5d8a", tint: "#eef4fa" }
+  {
+    key: "old",
+    label: "Old Testament",
+    emoji: "📖",
+    books: OLD_TESTAMENT,
+    accent: "#b98428",
+    tint: "#fdf5e7",
+    badgeBg: "#f6dca8",
+    badgeFg: "#8a6318"
+  },
+  {
+    key: "new",
+    label: "New Testament",
+    emoji: "📕",
+    books: NEW_TESTAMENT,
+    accent: "#2f5d8a",
+    tint: "#eef4fa",
+    badgeBg: "#d7e4f3",
+    badgeFg: "#2f5d8a"
+  }
 ];
 
 export default function BookGrid({ search, onSearch, activeTab, onTabChange, downloaded }) {
@@ -41,46 +59,56 @@ export default function BookGrid({ search, onSearch, activeTab, onTabChange, dow
 
   return (
     <div>
-      <div className="pr-card pr-card-pad" style={{ marginBottom: 22 }}>
-        <label htmlFor="book-search" className="pr-label">
-          Find a book
-        </label>
-        <div style={{ position: "relative" }}>
-          <SearchIcon
-            className="h-4 w-4"
-            style={{ position: "absolute", left: 14, top: 15, color: "var(--pr-gold-deep)" }}
-          />
-          <input
-            id="book-search"
-            className="pr-input"
-            style={{ paddingLeft: 40 }}
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search books… e.g. Psalms, Okubikkulirwa, Philemon"
-          />
-        </div>
+      <div className="pr-reader-search">
+        <SearchIcon className="pr-reader-search-icon h-5 w-5" />
+        <input
+          id="book-search"
+          type="text"
+          className="pr-reader-search-input"
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Search books… e.g. Psalms, Obukikkulirwa, Philemon"
+          aria-label="Search books"
+        />
+      </div>
 
-        <div className="pr-tabs" style={{ marginTop: 16, borderBottom: "none" }}>
-          {SECTIONS.map((section) => (
-            <button
-              key={section.key}
-              type="button"
-              className={`pr-tab ${activeTab === section.key ? "pr-tab-active" : ""}`}
-              onClick={() => handleTab(section.key)}
-            >
-              📖 {section.label} ({section.count})
-            </button>
-          ))}
-        </div>
+      <div className="pr-reader-segment" role="tablist" aria-label="Testaments">
+        {SECTIONS.map((section) => (
+          <button
+            key={section.key}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === section.key}
+            className={`pr-reader-segment-btn ${activeTab === section.key ? "is-active" : ""}`}
+            onClick={() => handleTab(section.key)}
+          >
+            <span aria-hidden="true">{section.emoji}</span>
+            <span>{section.label}</span>
+            <span className="pr-reader-segment-count">{section.books.length}</span>
+          </button>
+        ))}
       </div>
 
       {SECTIONS.map((section) => {
         const books = filtered.find((item) => item.key === section.key).books;
         return (
-          <section key={section.key} id={`section-${section.key}`} style={{ marginBottom: 34 }}>
-            <h2 className="pr-heading" style={{ fontSize: "1.25rem", fontWeight: 800, margin: "0 0 14px" }}>
-              {section.label} <span style={{ color: "var(--pr-gold-deep)" }}>({books.length})</span>
-            </h2>
+          <section key={section.key} id={`section-${section.key}`} className="pr-reader-section">
+            <div className="pr-reader-section-head">
+              <span
+                className="pr-reader-section-badge"
+                style={{ background: section.badgeBg, color: section.badgeFg }}
+                aria-hidden="true"
+              >
+                {section.emoji}
+              </span>
+              <h2 className="pr-reader-section-title">{section.label}</h2>
+              <span
+                className="pr-reader-section-count"
+                style={{ background: section.tint, color: section.accent }}
+              >
+                {books.length} books
+              </span>
+            </div>
 
             {books.length === 0 ? (
               <div className="pr-empty">
@@ -90,57 +118,39 @@ export default function BookGrid({ search, onSearch, activeTab, onTabChange, dow
                 </p>
               </div>
             ) : (
-              <div className="pr-grid pr-grid-3">
+              <div className="pr-reader-books">
                 {books.map((book) => {
-                  const isDownloaded = downloaded && downloaded.has(book.number);
+                  const isDownloaded = Boolean(downloaded && downloaded.has(book.number));
                   return (
                     <Link
                       key={book.number}
-                      to={createPageUrl("Chapter") + `?book=${book.number}&chapter=1`}
-                      className="pr-card pr-card-hover"
-                      style={{
-                        display: "block",
-                        textDecoration: "none",
-                        padding: 18,
-                        borderTop: `4px solid ${section.accent}`,
-                        background: "#ffffff"
-                      }}
+                      to={createPageUrl("BibleReader") + `?book=${book.number}`}
+                      className={`pr-reader-book ${isDownloaded ? "has-offline" : ""}`}
+                      style={{ borderTopColor: section.accent }}
+                      title={`${book.name} · ${book.luganda}`}
                     >
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: "1.3rem",
-                              fontWeight: 800,
-                              color: "var(--pr-heading)",
-                              letterSpacing: "-0.01em"
-                            }}
-                          >
-                            {book.abbr}
-                          </p>
-                          <p style={{ margin: "4px 0 0", fontWeight: 700, color: "var(--pr-heading)", fontSize: "0.95rem" }}>
-                            {book.name}
-                          </p>
-                          <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--pr-body)" }}>
-                            {book.luganda}
-                          </p>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                            <span
-                              className="pr-badge"
-                              style={{ background: section.tint, color: section.accent }}
-                            >
-                              {book.chapters} {book.chapters === 1 ? "chapter" : "chapters"}
-                            </span>
-                            {isDownloaded ? (
-                              <span className="pr-badge" style={{ background: "rgba(29,64,53,0.12)", color: "#1d4035" }}>
-                                <DownloadIcon className="h-3 w-3" /> Offline
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <ChevronRightIcon className="h-5 w-5" style={{ color: section.accent }} />
-                      </div>
+                      <span className="pr-reader-book-abbr">{book.abbr}</span>
+                      <span className="pr-reader-book-name">{book.name}</span>
+                      <span className="pr-reader-book-luganda">{book.luganda}</span>
+
+                      <span className="pr-reader-book-foot">
+                        <span
+                          className="pr-reader-book-counts"
+                          style={{ background: section.tint, color: section.accent }}
+                        >
+                          <b>{book.chapters}</b>
+                          <span>{book.chapters === 1 ? "chapter" : "chapters"}</span>
+                        </span>
+                        <span className="pr-reader-book-go">
+                          <ChevronRightIcon className="h-4 w-4" />
+                        </span>
+                      </span>
+
+                      {isDownloaded ? (
+                        <span className="pr-reader-offline-tag" title="Available offline">
+                          <CloudOffIcon className="h-3 w-3" />
+                        </span>
+                      ) : null}
                     </Link>
                   );
                 })}
