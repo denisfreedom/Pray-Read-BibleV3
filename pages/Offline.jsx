@@ -7,6 +7,7 @@ import { offline, chapterKey, STORES } from "@/lib/offlineDb";
 import { BIBLE_BOOKS } from "@/lib/bibleBooks";
 import { bytesToMb } from "@/lib/format";
 import { fetchChapter } from "@/lib/bibleApi";
+import { getVersionOrDefault, listInstalledVersions } from "@/lib/versions";
 import { DownloadIcon, Trash2Icon, HardDriveIcon, CheckCircleIcon, Loader2Icon, BookOpenIcon, ArrowLeftIcon } from "lucide-react";
 
 const PLAN_BOOKS = ["John", "Psalms"];
@@ -29,7 +30,13 @@ export default function Offline() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [bookScope, setBookScope] = useState("plan");
-  const [language, setLanguage] = useState("en");
+  const [versionId, setVersionId] = useState("kjv");
+  const version = getVersionOrDefault(versionId);
+  const [installed, setInstalled] = useState([]);
+
+  useEffect(() => {
+    setInstalled(listInstalledVersions());
+  }, []);
 
   const refresh = async () => {
     const next = {};
@@ -66,9 +73,23 @@ export default function Offline() {
                 bookNumber: book.number,
                 bookName: book.name,
                 chapter,
-                language
+                language: version.language,
+                version: version.id
               });
-              await offline.put("chapters", chapterKey(book.number, chapter, language), data);
+              await offline.put(
+                "chapters",
+                chapterKey(book.number, chapter, version.language, version.id),
+                {
+                  reference: data.reference,
+                  book: data.book,
+                  book_number: data.book_number,
+                  chapter: data.chapter,
+                  language: data.language,
+                  version: data.version,
+                  strongs: data.strongs,
+                  verses: data.verses
+                }
+              );
               if (selected.includes("verses")) {
                 await offline.put(
                   "verses",
@@ -194,18 +215,24 @@ export default function Offline() {
             </div>
 
             <div className="pr-field" style={{ marginBottom: 16 }}>
-              <label className="pr-label" htmlFor="offline-language">
-                Language
+              <label className="pr-label" htmlFor="offline-version">
+                Bible version to install
               </label>
               <select
-                id="offline-language"
+                id="offline-version"
                 className="pr-input"
-                value={language}
-                onChange={(event) => setLanguage(event.target.value)}
+                value={versionId}
+                onChange={(event) => setVersionId(event.target.value)}
               >
-                <option value="en">English</option>
-                <option value="lu">Luganda</option>
+                {(installed.length ? installed : listInstalledVersions()).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
               </select>
+              <p style={{ margin: "8px 0 0", fontSize: "0.78rem", color: "var(--pr-body)" }}>
+                {version.note} More versions are installed from the Bible Reader.
+              </p>
             </div>
 
             <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>

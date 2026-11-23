@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fse2 } from "@/api/fse2Client";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -12,13 +12,28 @@ import { logReadingActivity } from "@/lib/activity";
 import { findPlanDay, recordReading } from "@/lib/readings";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { formatDateLabel } from "@/lib/reading";
+import { getActiveVersionId, getVersionOrDefault } from "@/lib/versions";
+import {
+  annotationKey,
+  loadLocalAnnotations,
+  mergeAnnotations,
+  removeAnnotation,
+  saveAnnotation
+} from "@/lib/studyAnnotations";
+import { PRAYERS } from "@/lib/seedContent";
+import { getChapterPrayer } from "@/lib/chapterStudy";
 import VerseActionBar from "@/components/read/VerseActionBar";
 import FloatingVerse from "@/components/read/FloatingVerse";
 import PassageTabs from "@/components/read/PassageTabs";
-import PassagePrayer from "@/components/read/PassagePrayer";
+import PassagePrayer, { matchesPassage } from "@/components/read/PassagePrayer";
+import ChapterSidebar from "@/components/read/ChapterSidebar";
+import VersionPicker from "@/components/read/VersionPicker";
+import ShareSheet from "@/components/read/ShareSheet";
+import StrongsText from "@/components/read/StrongsText";
+import VersePopup from "@/components/read/VersePopup";
 import Spinner from "@/components/common/Spinner";
 import EmptyState from "@/components/common/EmptyState";
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, Volume2Icon, TypeIcon, LanguagesIcon, ListIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, CloudOffIcon, AlertCircleIcon, HeartHandshakeIcon, BookOpenIcon, CheckCircleIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, Volume2Icon, TypeIcon, ListIcon, BookmarkIcon, HighlighterIcon, NotebookPenIcon, CloudOffIcon, AlertCircleIcon, HeartHandshakeIcon, BookOpenIcon, CheckCircleIcon } from "lucide-react";
 
 const HIGHLIGHT_COLORS = {
   yellow: "#fde68a",
@@ -40,7 +55,16 @@ export default function Chapter() {
   const verseParam = Number(params.get("verse")) || 0;
   const book = getBookByNumber(bookNumber) || BIBLE_BOOKS[18];
 
-  const [language, setLanguage] = useState(params.get("lang") === "lu" ? "lu" : "en");
+  // The version carries the language, so the reader always knows which text
+  // they are looking at and which text the other language sits beside.
+  const [versionId, setVersionId] = useState(() => {
+    const lang = params.get("lang");
+    if (lang === "lu") return "luganda";
+    if (lang === "en") return "kjv";
+    return getActiveVersionId();
+  });
+  const version = useMemo(() => getVersionOrDefault(versionId), [versionId]);
+  const language = version.language;
   const [fontScale, setFontScale] = useState(1);
   const [verses, setVerses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +80,13 @@ export default function Chapter() {
   const [reloadToken, setReloadToken] = useState(0);
   const [showChapterGrid, setShowChapterGrid] = useState(false);
   const [toast, setToast] = useState("");
+  const [annotations, setAnnotations] = useState([]);
+  const [popup, setPopup] = useState(null);
+  const [companionVerses, setCompanionVerses] = useState([]);
+  const [shareSections, setShareSections] = useState([]);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareVerse, setShareVerse] = useState(null);
+  const [hasStrongs, setHasStrongs] = useState(false);
 
   const { data: storedMarks } = useQuery({
     queryKey: ["studyMarks", email],
@@ -73,6 +104,83 @@ export default function Chapter() {
     queryFn: () => fse2.entities.Reading.list("-updated_date", 300),
     enabled: !!email
   });
+
+  // The marks the reader makes in the chapter sidebar are kept with the
+  // book, so they are still there the next time the chapter is opened.
+  const { data: serverAnnotations = [] } = useQuery({
+    queryKey: ["studyAnnotations", email, book.number],
+    queryFn: async () => {
+      if (!email) return [];
+      const rows = await fse2.entities.StudyAnnotation.list("-updated_date", 300);
+      return (rows || []).filter(
+        (row) => row.owner_email === email && Number(row.book_number) === Number(book.number)
+      );
+    },
+    enabled: !!email
+  });
+
+  const { data: prayerRows = [] } = useQuery({
+    queryKey: ["prayers"],
+    queryFn: () => fetchPublicCollection("prayers", { authenticated: false })
+  });
+
+  useEffect(() => {
+    let active = true;
+    loadLocalAnnotations(book.number).then((local) => {
+      if (!active) return;
+      setAnnotations(mergeAnnotations(serverAnnotations, local));
+    });
+    return () => {
+      active = false;
+    };
+  }, [serverAnnotations, book.number]);
+
+  const handleAnnotate = useCallback(
+    async (payload) => {
+      const record = {
+        owner_email: email,
+        book_number: book.number,
+        book: book.name,
+        ...payload
+      };
+      const saved = await saveAnnotation(record);
+      setAnnotations((prev) => mergeAnnotations([...prev, saved], []));
+    },
+    [email, book.number, book.name]
+  );
+
+  const handleRemove = useCallback(async (annotation) => {
+    await removeAnnotation(annotation);
+    const key = annotation.local_id || annotationKey(annotation);
+    setAnnotations((prev) =>
+      prev.filter((item) => (item.local_id || annotationKey(item)) !== key)
+    );
+  }, []);
+
+  const handleOpenPassage = useCallback((passage) => {
+    if (!passage) return;
+    setPopup(passage);
+  }, []);
+
+  // The chapter in the other language is fetched the first time the reader
+  // shares, so the share button can offer both texts at once.
+  const loadCompanion = useCallback(async () => {
+    if (companionVerses.length) return companionVerses;
+    try {
+      const data = await fetchChapter({
+        bookNumber: book.number,
+        bookName: book.name,
+        chapter,
+        language: language === "lu" ? "en" : "lu",
+        version: language === "lu" ? "kjv" : "luganda"
+      });
+      const rows = data.verses || [];
+      setCompanionVerses(rows);
+      return rows;
+    } catch {
+      return [];
+    }
+  }, [book.number, book.name, chapter, language, companionVerses]);
 
   // Marks kept in the offline centre are loaded too, so a reader who is not
   // signed in still sees the highlights, bookmarks and notes they saved.
@@ -134,11 +242,13 @@ export default function Chapter() {
           bookNumber: book.number,
           bookName: book.name,
           chapter,
-          language
+          language,
+          version: versionId
         });
         if (!active) return;
         setVerses(data.verses || []);
         setOfflineCopy(Boolean(data.stale));
+        setHasStrongs(Boolean(data.strongs));
         if (data.refresh && typeof data.refresh.then === "function") {
           data.refresh
             .then((fresh) => {
@@ -158,7 +268,7 @@ export default function Chapter() {
     return () => {
       active = false;
     };
-  }, [book.number, book.name, chapter, language, reloadToken]);
+  }, [book.number, book.name, chapter, language, versionId, reloadToken]);
 
   useEffect(() => {
     if (!email) {
@@ -329,6 +439,61 @@ export default function Chapter() {
   const reference = `${book.name} ${chapter}`;
   const audioUrl = `https://www.wordproaudio.org/bibles/app/audio/1/${book.number}/${chapter}.mp3`;
 
+  // The prayer that closes this chapter, used when the library has no prayer
+  // for the verse the reader is on.
+  const chapterPrayers = useMemo(
+    () => getChapterPrayer(book, chapter, { prayers: prayerRows }),
+    [book.number, chapter, prayerRows]
+  );
+
+  const prayerTextFor = (verseNumber) => {
+    const source = (prayerRows || []).length ? prayerRows : PRAYERS;
+    const match = (source || []).find((row) =>
+      matchesPassage(row.scripture_ref, book.name, chapter, verseNumber)
+    );
+    if (!match) return "";
+    return [match.title, match.body_en || match.body_lu || "", match.scripture_ref]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  // The share carries the verse in both languages, the prayer passage and the
+  // cross references of the chapter.
+  const handleShare = async (verseNumber) => {
+    const verse = verses.find((row) => row.verse === verseNumber);
+    if (!verse) return;
+    setToast("Gathering the verse in both languages...");
+    const companionRows = await loadCompanion();
+    setToast("");
+    const companion = companionRows.find((row) => row.verse === verseNumber);
+    const english = language === "en" ? verse.text : companion ? companion.text : "";
+    const luganda = language === "lu" ? verse.text : companion ? companion.text : "";
+    const sections = [];
+    if (english) sections.push({ label: `${reference} ${verseNumber} (English)`, text: english });
+    if (luganda && luganda !== english) {
+      sections.push({ label: `${reference} ${verseNumber} (Luganda)`, text: luganda });
+    }
+    const prayer = prayerTextFor(verseNumber);
+    if (prayer) sections.push({ label: "Prayer passage", text: prayer });
+    if (crossReferences.length) {
+      const lines = crossReferences.map((row) => {
+        const name = getBookByNumber(row.book)?.name || "Passage";
+        return `${name} ${row.chapter}:${row.verse} - ${row.text}`;
+      });
+      sections.push({ label: "Cross-references", text: lines.join("\n") });
+    }
+    setShareSections(sections);
+    setShareVerse(verseNumber);
+    setShareOpen(true);
+  };
+
+  const handleCommentary = () => {
+    const node = document.getElementById("chapter-commentary-panel");
+    if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setToast("The commentary of this chapter is in the sidebar.");
+    window.setTimeout(() => setToast(""), 2000);
+  };
+
   return (
     <div>
       <section className="pr-section-tight" style={{ background: "var(--pr-emerald)" }}>
@@ -378,14 +543,15 @@ export default function Chapter() {
             </button>
 
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="pr-chip"
-                style={{ cursor: "pointer" }}
-                onClick={() => setLanguage(language === "en" ? "lu" : "en")}
-              >
-                <LanguagesIcon className="h-4 w-4" /> {language === "en" ? "EN" : "LU"}
-              </button>
+              <VersionPicker
+                versionId={versionId}
+                busy={loading}
+                onChange={(id) => {
+                  setVersionId(id);
+                  setSelectedVerse(null);
+                  setPrayerVerse(null);
+                }}
+              />
               <button
                 type="button"
                 className="pr-chip"
@@ -453,6 +619,13 @@ export default function Chapter() {
             </div>
           ) : null}
 
+          {version.strongs && !hasStrongs && !loading ? (
+            <div className="pr-success" style={{ marginTop: 14 }}>
+              The Strong's numbers are not available for this chapter right now, so the plain King James text is
+              shown.
+            </div>
+          ) : null}
+
           {!isAuthenticated ? (
             <div className="pr-success" style={{ marginTop: 14 }}>
               <Link to={createPageUrl("Login")} className="pr-link">
@@ -463,7 +636,18 @@ export default function Chapter() {
           ) : null}
         </div>
 
-        <div className="pr-grid" style={{ gap: 22 }}>
+        <div className="pr-grid pr-chapter-grid" style={{ gap: 22 }}>
+          <ChapterSidebar
+            book={book}
+            chapter={chapter}
+            verses={verses}
+            language={language}
+            annotations={annotations}
+            onAnnotate={handleAnnotate}
+            onRemove={handleRemove}
+            onOpenPassage={handleOpenPassage}
+          />
+
           <div className="pr-card pr-card-pad">
             {loading ? (
               <Spinner label="Loading the passage" />
@@ -507,6 +691,8 @@ export default function Chapter() {
                             setCrossRef(first);
                           }}
                           onPrayer={(number) => setPrayerVerse((current) => (current === number ? null : number))}
+                          onCommentary={handleCommentary}
+                          onShare={handleShare}
                           onClose={() => setSelectedVerse(null)}
                         />
                       ) : null}
@@ -529,7 +715,7 @@ export default function Chapter() {
                             padding: background ? "0 4px" : undefined
                           }}
                         >
-                          {verse.text}
+                          <StrongsText text={verse.text} />
                         </span>
                       </button>
                       {prayerVerse === verse.verse ? (
@@ -538,6 +724,11 @@ export default function Chapter() {
                           chapter={chapter}
                           verse={verse.verse}
                           language={language}
+                          annotations={annotations}
+                          fallback={chapterPrayers[0] || null}
+                          onAnnotate={handleAnnotate}
+                          onRemove={handleRemove}
+                          onOpenPassage={handleOpenPassage}
                           onClose={() => setPrayerVerse(null)}
                         />
                       ) : null}
@@ -612,6 +803,25 @@ export default function Chapter() {
           chapterUrl={`?book=${crossRef.book}&chapter=${crossRef.chapter}&verse=${crossRef.verse}&lang=${language}`}
         />
       ) : null}
+
+      {popup ? (
+        <VersePopup
+          passage={popup}
+          annotations={annotations}
+          onAnnotate={handleAnnotate}
+          onRemove={handleRemove}
+          onClose={() => setPopup(null)}
+        />
+      ) : null}
+
+      <ShareSheet
+        open={shareOpen}
+        title={shareVerse ? `Share ${reference} ${shareVerse}` : `Share ${reference}`}
+        subtitle="The verse in both languages, the prayer passage and the cross references."
+        sections={shareSections}
+        url={`${window.location.origin}${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}&verse=${shareVerse || ""}&lang=${language}`}
+        onClose={() => setShareOpen(false)}
+      />
 
       {toast ? <div className="pr-toast">{toast}</div> : null}
     </div>

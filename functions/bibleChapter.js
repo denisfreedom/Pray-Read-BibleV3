@@ -56,6 +56,31 @@ const bibleApiUrl = (book, chapter, translation) => {
   return `https://bible-api.com/${path}+${chapter}?translation=${encodeURIComponent(translation)}`;
 };
 
+const strongsUrl = (bookNumber, chapter) =>
+  `https://bolls.life/get-chapter/KJV/${bookNumber}/${chapter}?bolls_format=true`;
+
+/**
+ * Parses the Strong's marked text. The Greek and Hebrew numbers arrive as
+ * superscript codes and are kept in the verse text so the reader sees them
+ * beside the word they belong to.
+ */
+const parseStrongs = (raw) => {
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw && raw.verses) ? raw.verses : [];
+  const verses = [];
+  for (const row of list) {
+    if (!row) continue;
+    const number = Number(row.verse);
+    const text = decodeEntities(
+      String(row.text || "")
+        .replace(/<sup[^>]*>([\s\S]*?)<\/sup>/gi, " ($1)")
+        .replace(/<[^>]+>/g, "")
+    ).replace(/\s{2,}/g, " ").trim();
+    if (!Number.isFinite(number) || !text) continue;
+    verses.push({ verse: number, text });
+  }
+  return verses;
+};
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -92,8 +117,35 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (translation === "kjvp") {
+      try {
+        const response = await fetch(strongsUrl(bookNumber, chapter), {
+          headers: { "User-Agent": "PrayReadBible/1.0" }
+        });
+        const raw = await response.json();
+        const verses = response.ok ? parseStrongs(raw) : [];
+        if (verses.length > 0) {
+          const marked = verses.some((verse) => /\([A-Za-z]?\d{1,5}\)/.test(verse.text));
+          return Response.json({
+            reference: `${book} ${chapter}`,
+            book,
+            book_number: bookNumber,
+            chapter,
+            language: "en",
+            translation,
+            strongs: marked,
+            verse_count: verses.length,
+            verses
+          });
+        }
+      } catch {
+        // Fall through to the plain KJV text below.
+      }
+    }
+
     try {
-      const response = await fetch(bibleApiUrl(book, chapter, translation));
+      const wanted = translation === "kjvp" ? "kjv" : translation;
+      const response = await fetch(bibleApiUrl(book, chapter, wanted));
       const raw = await response.json();
       if (response.ok && raw && Array.isArray(raw.verses) && raw.verses.length > 0) {
         const verses = raw.verses.map((verse) => ({
@@ -106,7 +158,8 @@ Deno.serve(async (req) => {
           book_number: bookNumber,
           chapter,
           language: "en",
-          translation,
+          translation: wanted,
+          strongs: false,
           verse_count: verses.length,
           verses
         });

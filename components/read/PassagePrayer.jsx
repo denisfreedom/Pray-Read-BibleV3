@@ -2,6 +2,8 @@ import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { PRAYERS } from "@/lib/seedContent";
+import { parseReference } from "@/lib/scriptureRefs";
+import AnnotatedText from "@/components/read/AnnotatedText";
 import { HeartHandshakeIcon, XIcon } from "lucide-react";
 
 const normalize = (value) => String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -24,7 +26,18 @@ export const matchesPassage = (reference, bookName, chapter, verse) => {
   return numbers.slice(1).includes(Number(verse));
 };
 
-export default function PassagePrayer({ book, chapter, verse, language = "en", onClose }) {
+export default function PassagePrayer({
+  book,
+  chapter,
+  verse,
+  language = "en",
+  annotations = [],
+  fallback = null,
+  onAnnotate,
+  onRemove,
+  onOpenPassage,
+  onClose
+}) {
   const [mode, setMode] = useState(language === "lu" ? "lu" : "en");
 
   const { data: rows = [] } = useQuery({
@@ -36,6 +49,42 @@ export default function PassagePrayer({ book, chapter, verse, language = "en", o
     const source = (rows || []).length ? rows : PRAYERS;
     return (source || []).filter((row) => matchesPassage(row.scripture_ref, book, chapter, verse));
   }, [rows, book, chapter, verse]);
+
+  const forBlock = (blockId) =>
+    annotations.filter((annotation) => annotation.block_id === blockId);
+
+  const openReference = (label) => {
+    const reference = parseReference(label);
+    if (reference && onOpenPassage) onOpenPassage(reference);
+  };
+
+  // The prayer of the library for this verse, or, when there is none, the
+  // prayer that closes the chapter.
+  const shown = useMemo(() => {
+    if (matches.length) {
+      return matches.map((row) => ({
+        key: row.id || row.title,
+        title: row.title,
+        titleLu: row.title_lu,
+        bodyEn: row.body_en,
+        bodyLu: row.body_lu,
+        ref: row.scripture_ref
+      }));
+    }
+    if (fallback && (fallback.body || fallback.bodyLu)) {
+      return [
+        {
+          key: "chapter-prayer",
+          title: fallback.title,
+          titleLu: fallback.titleLu,
+          bodyEn: fallback.body,
+          bodyLu: fallback.bodyLu,
+          ref: fallback.ref
+        }
+      ];
+    }
+    return [];
+  }, [matches, fallback]);
 
   return (
     <div
@@ -85,25 +134,38 @@ export default function PassagePrayer({ book, chapter, verse, language = "en", o
         </div>
       </div>
 
-      {matches.length === 0 ? (
+      {shown.length === 0 ? (
         <p style={{ margin: "10px 0 0", fontSize: "0.88rem" }}>
           No prayer from the library is attached to {book} {chapter}
           {verse ? `:${verse}` : ""} yet. Write your own in the prayer journal.
         </p>
       ) : (
-        matches.map((row, index) => (
-          <div key={row.id || row.title || index} style={{ marginTop: 12 }}>
-            <p className="pr-heading" style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem" }}>
-              {mode === "lu" ? row.title_lu || row.title : row.title}
-            </p>
-            {row.scripture_ref ? (
-              <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "var(--pr-gold-deep)" }}>{row.scripture_ref}</p>
-            ) : null}
-            <p style={{ margin: "8px 0 0", fontSize: "0.92rem", lineHeight: 1.65, whiteSpace: "pre-line" }}>
-              {mode === "lu" ? row.body_lu || row.body_en : row.body_en || row.body_lu}
-            </p>
-          </div>
-        ))
+        shown.map((row, index) => {
+          const blockId = `prayer-passage-${book}-${chapter}-${verse || 0}-${index}`;
+          const body = mode === "lu" ? row.bodyLu || row.bodyEn : row.bodyEn || row.bodyLu;
+          return (
+            <div key={row.key || index} style={{ marginTop: 12 }}>
+              <p className="pr-heading" style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem" }}>
+                {mode === "lu" ? row.titleLu || row.title : row.title}
+              </p>
+              {row.ref ? (
+                <button type="button" className="pr-passage-prayer-ref" onClick={() => openReference(row.ref)}>
+                  {row.ref}
+                </button>
+              ) : null}
+              <AnnotatedText
+                blockId={blockId}
+                section="prayer-passage"
+                text={body || ""}
+                annotations={forBlock(blockId)}
+                onAnnotate={onAnnotate}
+                onRemove={onRemove}
+                className="pr-passage-prayer-body"
+                style={{ margin: "8px 0 0", fontSize: "0.92rem", lineHeight: 1.65, whiteSpace: "pre-line" }}
+              />
+            </div>
+          );
+        })
       )}
     </div>
   );
