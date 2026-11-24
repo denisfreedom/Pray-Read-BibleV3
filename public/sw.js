@@ -42,6 +42,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// A source that stays silent is given up on, so the reader is never kept
+// waiting by a connection that will not answer.
+const fetchWithTimeout = (request, timeout) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  return fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timer));
+};
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;

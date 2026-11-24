@@ -39,7 +39,7 @@ import StrongsPopup from "@/components/read/StrongsPopup";
 import VersePopup from "@/components/read/VersePopup";
 import Spinner from "@/components/common/Spinner";
 import EmptyState from "@/components/common/EmptyState";
-import { AlertCircleIcon, ArrowLeftIcon, BookOpenIcon, BookmarkIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon, HeartHandshakeIcon, HighlighterIcon, ListIcon, MoonIcon, NotebookPenIcon, PauseIcon, PlayIcon, Share2Icon, SunIcon, TypeIcon, Volume2Icon } from "lucide-react";
+import { AlertCircleIcon, ArrowLeftIcon, BookOpenIcon, BookmarkIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon, HeartHandshakeIcon, HighlighterIcon, ListIcon, Loader2Icon, MoonIcon, NotebookPenIcon, PauseIcon, PlayIcon, Share2Icon, SunIcon, TypeIcon, Volume2Icon } from "lucide-react";
 
 const HIGHLIGHT_COLORS = {
   yellow: "#fde68a",
@@ -134,6 +134,9 @@ export default function Chapter() {
   const [annotations, setAnnotations] = useState([]);
   const [popup, setPopup] = useState(null);
   const [companionVerses, setCompanionVerses] = useState([]);
+  // The other language is kept with the chapter it belongs to, so the text
+  // of the last chapter is never shown beside the verses of a new one.
+  const [companionKey, setCompanionKey] = useState("");
   const [shareSections, setShareSections] = useState([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareVerse, setShareVerse] = useState(null);
@@ -190,6 +193,15 @@ export default function Chapter() {
     writeStore(STORAGE.lang, langMode);
   }, [langMode]);
 
+  // A link can name the version it wants to open, so the reader lands on
+  // that version even when the chapter is already open in another one.
+  const urlVersion = params.get("version");
+  useEffect(() => {
+    if (!urlVersion) return;
+    const known = VERSIONS.find((record) => record.id === urlVersion);
+    if (known) setVersionId((current) => (current === known.id ? current : known.id));
+  }, [urlVersion]);
+
   useEffect(() => {
     writeStore(STORAGE.theme, theme);
   }, [theme]);
@@ -223,22 +235,25 @@ export default function Chapter() {
   }, []);
 
   const loadCompanion = useCallback(async () => {
-    if (companionVerses.length) return companionVerses;
+    const wanted = language === "lu" ? "en" : "lu";
+    const wantedKey = `${book.number}:${chapter}:${wanted}`;
+    if (companionVerses.length && companionKey === wantedKey) return companionVerses;
     try {
       const data = await fetchChapter({
         bookNumber: book.number,
         bookName: book.name,
         chapter,
-        language: language === "lu" ? "en" : "lu",
+        language: wanted,
         version: language === "lu" ? "kjv" : "luganda"
       });
       const rows = data.verses || [];
       setCompanionVerses(rows);
+      setCompanionKey(wantedKey);
       return rows;
     } catch {
       return [];
     }
-  }, [book.number, book.name, chapter, language, companionVerses]);
+  }, [book.number, book.name, chapter, language, companionVerses, companionKey]);
 
   // The other language of this chapter. It is only fetched when the reader
   // asks for it, and it is cached on the device with the chapter.
@@ -248,9 +263,11 @@ export default function Chapter() {
     const wantsEnglish = language === "lu" && langMode !== "lu";
     if (!wantsLuganda && !wantsEnglish) {
       setCompanionVerses([]);
+      setCompanionKey("");
       return undefined;
     }
     const wanted = wantsLuganda ? "lu" : "en";
+    const wantedKey = `${book.number}:${chapter}:${wanted}`;
     fetchChapter({
       bookNumber: book.number,
       bookName: book.name,
@@ -259,10 +276,14 @@ export default function Chapter() {
       version: wanted === "lu" ? "luganda" : "kjv"
     })
       .then((data) => {
-        if (active) setCompanionVerses(data.verses || []);
+        if (!active) return;
+        setCompanionVerses(data.verses || []);
+        setCompanionKey(wantedKey);
       })
       .catch(() => {
-        if (active) setCompanionVerses([]);
+        if (!active) return;
+        setCompanionVerses([]);
+        setCompanionKey(wantedKey);
       });
     return () => { active = false; };
   }, [book.number, book.name, chapter, language, langMode]);
@@ -318,7 +339,8 @@ export default function Chapter() {
         }
       } catch (err) {
         if (!active) return;
-        setVerses([]);
+        // The verses that are already on the screen stay there: a chapter
+        // that cannot be reached must never empty the page.
         setError(err.message || "Could not load this chapter.");
       } finally {
         if (active) setLoading(false);
@@ -582,6 +604,7 @@ export default function Chapter() {
     setVersionId(id);
     setSelectedVerse(null);
     setPrayerVerse(null);
+    setHasStrongs(false);
     if (id === "luganda") {
       if (langMode === "en") setLangMode("lu");
       return;
@@ -593,11 +616,16 @@ export default function Chapter() {
   const showLuganda = langMode === "lu" || langMode === "both";
   const displayLanguage = langMode === "lu" ? "lu" : "en";
 
+  // The other language is only used when it belongs to the chapter that is
+  // on the screen, so the text of the last chapter is never shown beside
+  // the verses of a new one.
+  const wantedCompanion = language === "en" ? "lu" : "en";
   const companionMap = useMemo(() => {
     const map = new Map();
+    if (companionKey !== `${book.number}:${chapter}:${wantedCompanion}`) return map;
     (companionVerses || []).forEach((row) => map.set(Number(row.verse), row.text || ""));
     return map;
-  }, [companionVerses]);
+  }, [companionVerses, companionKey, book.number, chapter, wantedCompanion]);
 
   const textFor = (verse) => {
     if (language === "en") {
@@ -772,9 +800,9 @@ export default function Chapter() {
           >
             <div className="pr-chapter-content">
               <div className="pr-card pr-card-pad">
-                {loading ? (
+                {loading && verses.length === 0 ? (
                   <Spinner label="Loading the passage" />
-                ) : error ? (
+                ) : error && verses.length === 0 ? (
                   <EmptyState
                     icon={AlertCircleIcon}
                     title="This chapter could not be loaded"
@@ -784,7 +812,25 @@ export default function Chapter() {
                 ) : verses.length === 0 ? (
                   <EmptyState icon={BookOpenIcon} title="No verses here" description="Choose another chapter from the list above." />
                 ) : (
-                  <div>
+                  <div style={{ opacity: loading ? 0.6 : 1, transition: "opacity 140ms ease" }}>
+                    {loading ? (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, fontSize: "0.88rem", fontWeight: 600, opacity: 0.85 }}
+                      >
+                        <Loader2Icon className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        Loading {book.name} {chapter}…
+                      </div>
+                    ) : null}
+                    {error ? (
+                      <div className="pr-error" style={{ marginBottom: 14 }}>
+                        {error}{" "}
+                        <button type="button" className="pr-link" onClick={() => setReloadToken((value) => value + 1)}>
+                          Try again
+                        </button>
+                      </div>
+                    ) : null}
                     {verses.map((verse) => {
                       const background = highlightFor(verse.verse);
                       const selected = selectedVerse === verse.verse;

@@ -132,6 +132,74 @@ const parseStrongs = (raw, bookNumber) => {
   return verses;
 };
 
+// The reader must never be held by a source that is slow or down, so every
+// request to a public source is given a short time and the sources are
+// asked at the same time instead of one after the other.
+const SOURCE_TIMEOUT = 8000;
+
+const fetchWithTimeout = async (url, options = {}, timeout = SOURCE_TIMEOUT) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/**
+ * Waits for the right answer and accepts the spare one only when the right
+ * one is late. The reader waits for one source, not for the sum of them.
+ */
+const firstUsable = async (primary, fallback, graceMs = 1500) => {
+  const tagged = (promise, tag) =>
+    promise.then((value) => ({ tag, value }), () => ({ tag, value: null }));
+  const first = await Promise.race([tagged(primary, "primary"), tagged(fallback, "fallback")]);
+  if (first.tag === "primary") {
+    if (first.value) return first.value;
+    return (await tagged(fallback, "fallback")).value || null;
+  }
+  // The spare answer came first: the right one is given a short grace to win.
+  const grace = await Promise.race([
+    tagged(primary, "primary"),
+    new Promise((resolve) => setTimeout(() => resolve({ tag: "timeout", value: null }), graceMs))
+  ]);
+  return grace.value || first.value || null;
+};
+
+const loadBibleApi = async (book, chapter, translation) => {
+  const response = await fetchWithTimeout(bibleApiUrl(book, chapter, translation));
+  const raw = await response.json();
+  if (!response.ok || !raw || !Array.isArray(raw.verses) || !raw.verses.length) {
+    throw new Error((raw && raw.error) || "The Bible source did not answer.");
+  }
+  const verses = raw.verses
+    .map((verse) => ({ verse: Number(verse.verse), text: cleanText(verse.text) }))
+    .filter((verse) => Number.isFinite(verse.verse) && verse.text);
+  if (!verses.length) throw new Error("The Bible source came back empty.");
+  return verses;
+};
+
+const loadWordplanet = async (language, bookNumber, chapter) => {
+  const response = await fetchWithTimeout(wordplanetUrl(language, bookNumber, chapter), {
+    headers: { "User-Agent": "PrayReadBible/1.0" }
+  });
+  const html = await response.text();
+  const verses = parseWordplanet(html);
+  if (!response.ok || !verses.length) throw new Error("The Bible source did not answer.");
+  return verses;
+};
+
+const loadStrongs = async (bookNumber, chapter) => {
+  const response = await fetchWithTimeout(strongsUrl(bookNumber, chapter), {
+    headers: { "User-Agent": "PrayReadBible/1.0" }
+  });
+  const raw = await response.json();
+  const verses = response.ok ? parseStrongs(raw, bookNumber) : [];
+  if (!verses.length) throw new Error("The Strong's source did not answer.");
+  return verses;
+};
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
