@@ -11,6 +11,7 @@ import {
   WrenchIcon
 } from "lucide-react";
 import ChapterCoverage from "@/components/admin/ChapterCoverage";
+import LibraryReport from "@/components/admin/LibraryReport";
 
 /**
  * Installs the King James Version with the Strong's numbers.
@@ -27,6 +28,7 @@ import ChapterCoverage from "@/components/admin/ChapterCoverage";
 export default function KjvPlusInstaller() {
   const [status, setStatus] = useState(null);
   const [dictionary, setDictionary] = useState(null);
+  const [usedCodes, setUsedCodes] = useState(null);
   const [busy, setBusy] = useState(false);
   const [wordBusy, setWordBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -56,7 +58,7 @@ export default function KjvPlusInstaller() {
     if (!data || data.error) {
       throw new Error((data && data.error) || "The dictionary could not answer.");
     }
-    if (data.status === 401 || data.total === undefined) {
+    if (data.status === 401) {
       throw new Error("Your admin session expired. Sign in again.");
     }
     return data;
@@ -77,6 +79,13 @@ export default function KjvPlusInstaller() {
       setDictionary(words);
     } catch {
       // The dictionary report is a comfort: the install still works without it.
+    }
+    try {
+      // The cross examination: the numbers the installed text really uses.
+      const used = await callWords("codes");
+      setUsedCodes(used);
+    } catch {
+      // The same: the report is a comfort, the install still works without it.
     }
   }, [call, callWords]);
 
@@ -105,7 +114,7 @@ export default function KjvPlusInstaller() {
 
       let data = null;
       for (let round = 0; round < 60; round += 1) {
-        data = await call("install", { limit: 60 });
+        data = await call("install", { limit: 250 });
         setStatus(data);
         if (data.done) {
           setTone("success");
@@ -140,7 +149,7 @@ export default function KjvPlusInstaller() {
     setNote("");
     setTone("success");
     try {
-      const data = await call("repair", { limit: 60 });
+      const data = await call("repair", { limit: 250 });
       setStatus(data);
       if (data.repaired) {
         setNote(`${data.repaired} chapters were downloaded again. ${data.missing} chapters are still missing.`);
@@ -199,6 +208,51 @@ export default function KjvPlusInstaller() {
     }
   };
 
+  /**
+   * Keeps the meaning of the numbers that the installed text really uses.
+   * The cross examination of the app says which numbers those are, so the
+   * dictionary holds exactly what the reader can tap.
+   */
+  const fillUsedWords = async () => {
+    setWordBusy(true);
+    setWordNote("");
+    setWordTone("success");
+    try {
+      let data = null;
+      for (let round = 0; round < 40; round += 1) {
+        data = await callWords("install", { limit: 2000 });
+        const report = await callWords("codes").catch(() => null);
+        if (report) setUsedCodes(report);
+        if (data.done || !data.written) {
+          if (data.remaining) {
+            setWordTone("error");
+            setWordNote(
+              `${data.remaining} numbers could not be kept yet${
+                data.not_in_dictionary ? `, and ${data.not_in_dictionary} of them are not in the concordance` : ""
+              }. Press the button again to carry on.`
+            );
+          } else {
+            setWordTone("success");
+            setWordNote(
+              `Every Strong's number the Bible uses is ready: ${data.used} numbers, from Genesis to Revelation.`
+            );
+          }
+          return;
+        }
+        setWordNote(
+          `Keeping the numbers… ${report ? report.cached : 0} of ${report ? report.used : 0} are ready.`
+        );
+      }
+      setWordTone("error");
+      setWordNote("The lookup is still running. Press the button again to carry on where it stopped.");
+    } catch (error) {
+      setWordTone("error");
+      setWordNote(error.message || "The lookup stopped.");
+    } finally {
+      setWordBusy(false);
+    }
+  };
+
   const installed = Number(status?.installed || 0);
   const ready = Number(status?.ready || 0);
   const missing = Number(status?.missing || 0);
@@ -219,8 +273,8 @@ export default function KjvPlusInstaller() {
         </h2>
         <p style={{ margin: "0 0 14px", fontSize: "0.85rem" }}>
           The installer copies every chapter of the King James Version, with the Greek and Hebrew word marked by
-          its Strong&apos;s number, into the app. Every chapter is checked, so a chapter without a single number
-          is never counted as installed.
+          its Strong&apos;s number, into the app. Every chapter is checked: a chapter without a single number, or
+          one whose verses are not numbered in one run from 1 to the end, is never counted as installed.
         </p>
 
         <div style={{ height: 8, borderRadius: 999, background: "var(--pr-border)", overflow: "hidden" }}>
@@ -298,6 +352,26 @@ export default function KjvPlusInstaller() {
             {wordsCached} of {wordsTotal} words are ready ({wordsPercent}%)
           </p>
 
+          {usedCodes ? (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--pr-ivory-soft)"
+              }}
+            >
+              <p style={{ margin: "0 0 4px", fontSize: "0.83rem", fontWeight: 700 }}>
+                The numbers the Bible really uses
+              </p>
+              <p style={{ margin: 0, fontSize: "0.8rem" }}>
+                {usedCodes.used} numbers are marked in the installed text. {usedCodes.cached} of them already have
+                their meaning kept in the app
+                {usedCodes.missing ? `, and ${usedCodes.missing} are still missing` : ""}.
+              </p>
+            </div>
+          ) : null}
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
             <button
               type="button"
@@ -307,6 +381,15 @@ export default function KjvPlusInstaller() {
             >
               {wordBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SparklesIcon className="h-4 w-4" />}
               Look the words up
+            </button>
+            <button
+              type="button"
+              className="pr-btn pr-btn-outline pr-btn-sm"
+              onClick={fillUsedWords}
+              disabled={wordBusy}
+            >
+              {wordBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <BookOpenIcon className="h-4 w-4" />}
+              Keep the numbers the Bible uses
             </button>
             <button
               type="button"
@@ -359,6 +442,8 @@ export default function KjvPlusInstaller() {
               filling what is missing, and the button above picks up where it stopped.
             </li>
           </ul>
+
+          <LibraryReport />
         </div>
       </div>
     </div>

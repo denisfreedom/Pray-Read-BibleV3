@@ -217,6 +217,51 @@ const fetchDictionary = async (language) => {
   return words;
 };
 
+// The concordance is kept in memory for a while, so a reader who asks for
+// many numbers in a row is answered without the files being read again.
+const dictionaryCache = { Greek: null, Hebrew: null, at: 0 };
+const readDictionary = async (language) => {
+  const fresh = Date.now() - dictionaryCache.at < 30 * 60 * 1000;
+  if (fresh && dictionaryCache[language]) return dictionaryCache[language];
+  const words = await fetchDictionary(language);
+  dictionaryCache[language] = words;
+  dictionaryCache.at = Date.now();
+  return words;
+};
+
+/**
+ * Every Strong's number that the installed KJV+ text really carries.
+ * The chapters of the app are read one by one and the numbers are taken out
+ * of the text, so the answer is the list of the words the Bible itself uses
+ * and not a list taken from a book.
+ */
+const readUsedCodes = async () => {
+  const codes = new Set();
+  const rows = [];
+  const pageSize = 500;
+  let offset = 0;
+  for (let page = 0; page < 40; page += 1) {
+    let batch = [];
+    try {
+      batch = await fse2.entities.KjvPlusChapter.list("created_date", pageSize, offset);
+    } catch {
+      batch = await fse2.entities.KjvPlusChapter.list("-updated_date", pageSize, offset).catch(() => []);
+    }
+    if (!batch || !batch.length) break;
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += batch.length;
+  }
+  for (const row of rows) {
+    const found = String(row.verses || "").match(/\(([GH]\d{1,5})\)/g) || [];
+    for (const item of found) {
+      const code = normalizeCode(item.replace(/\(|\)/g, ""));
+      if (code) codes.add(code);
+    }
+  }
+  return { codes: [...codes].sort(), chapters: rows.length };
+};
+
 const readCached = async (code) => {
   try {
     const rows = await fse2.entities.StrongEntry.filter({ code });
@@ -258,12 +303,14 @@ const keepEntry = async (values) => {
     const rows = await fse2.entities.StrongEntry.filter({ code: values.code });
     if (rows && rows.length) {
       await fse2.entities.StrongEntry.update(rows[0].id, values);
-      return;
+      return true;
     }
     await fse2.entities.StrongEntry.create(values);
+    return true;
   } catch {
     // The cache is a comfort, not a requirement: the definition is still
     // returned when it cannot be kept.
+    return false;
   }
 };
 
@@ -286,12 +333,10 @@ const keepEntries = async (entries) => {
       kept += fresh.length;
     } catch {
       for (const entry of fresh) {
-        try {
-          await keepEntry(entry);
-          kept += 1;
-        } catch {
-          // A word that cannot be kept is simply looked up again later.
-        }
+        const saved = await keepEntry(entry);
+        // A word that could not be kept is never counted, so the report of
+        // the install stays honest.
+        if (saved) kept += 1;
       }
     }
   }
@@ -360,6 +405,89 @@ Deno.serve(async (req) => {
         done: missing === 0,
         languages: report
       });
+    }
+
+    // The cross examination: the numbers the Bible uses and the numbers that
+    // are really kept in the app.
+    if (action === "codes") {
+      const used = await readUsedCodes();
+      const cached = await readCachedCodes();
+      const missing = used.codes.filter((code) => !cached.has(code));
+      return Response.json({
+        chapters: used.chapters,
+        used: used.codes.length,
+        cached: used.codes.length - missing.length,
+        missing: missing.length,
+        missing_codes: missing.slice(0, 500)
+      });
+    }
+
+    // Fills the definitions of the numbers the Bible really uses.
+    if (action === "install") {
+      const limit = Math.min(Math.max(Number(body.limit) || 600, 1), 4000);
+      const used = await readUsedCodes();
+      const cached = await readCachedCodes();
+      const wanted = used.codes.filter((code) => !cached.has(code));
+      const batch = wanted.slice(0, limit);
+      const entries = [];
+      const languages = ["Greek", "Hebrew"];
+      for (const language of languages) {
+        const words = await fetchDictionary(language);
+        for (const code of batch) {
+          if (entries.some((entry) => entry.code === code)) continue;
+          const word = words[code];
+          if (!word) continue;
+          entries.push(word);
+        }
+      }
+      const kept = await keepEntries(entries);
+      // The numbers the concordance does not carry are reported as well, so
+      // the answer of the cross examination stays honest.
+      const notInDictionary = Math.max(batch.length - entries.length, 0);
+      return Response.json({
+        used: used.codes.length,
+        wanted: wanted.length,
+        written: kept,
+        failed: entries.length - kept,
+        not_in_dictionary: notInDictionary,
+        remaining: Math.max(wanted.length - kept, 0),
+        done: wanted.length === 0 || wanted.length - kept === 0
+      });
+    }
+
+    // The definitions of a list of numbers, so the whole dictionary can be
+    // kept on the device of a reader.
+    if (action === "list") {
+      const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500);
+      const language = body.language ? String(body.language) : "";
+      const languages = language ? [language] : ["Greek", "Hebrew"];
+      const offset = Math.max(Number(body.offset) || 0, 0);
+      const wanted = Array.isArray(body.codes)
+        ? body.codes.map((code) => normalizeCode(code)).filter(Boolean)
+        : [];
+      const rows = [];
+      for (const lang of languages) {
+        let words = {};
+        try {
+          words = await readDictionary(lang);
+        } catch {
+          words = {};
+        }
+        if (wanted.length) {
+          for (const code of wanted) {
+            if (rows.some((row) => row.code === code)) continue;
+            const word = words[code];
+            if (!word) continue;
+            rows.push(word);
+          }
+        } else {
+          // The whole language, a page at a time.
+          const keys = Object.keys(words).sort();
+          const page = keys.slice(offset, offset + limit);
+          for (const code of page) rows.push(words[code]);
+        }
+      }
+      return Response.json({ rows: rows.slice(0, limit), total: rows.length, offset, limit });
     }
 
     const code = normalizeCode(body.code);

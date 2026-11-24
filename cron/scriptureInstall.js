@@ -171,7 +171,9 @@ const parseLuganda = (html) => {
 const fetchLuganda = async (bookNumber, chapter) => {
   const folder = String(Number(bookNumber) || 0).padStart(2, "0");
   const response = await fetch(`https://wordplanet.net/lug/${folder}/${chapter}.htm`, {
-    headers: { "User-Agent": USER_AGENT }
+    headers: { "User-Agent": USER_AGENT },
+    // A source that stops answering must not hold the whole run up.
+    signal: AbortSignal.timeout(20000)
   });
   if (!response.ok) throw new Error(`The source answered with ${response.status}.`);
   const verses = parseLuganda(await response.text());
@@ -208,7 +210,7 @@ const parseStrongs = (raw, bookNumber) => {
 const fetchKjvPlus = async (bookNumber, chapter) => {
   const response = await fetch(
     `https://bolls.life/get-chapter/KJV/${bookNumber}/${chapter}?bolls_format=true`,
-    { headers: { "User-Agent": USER_AGENT } }
+    { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(20000) }
   );
   if (!response.ok) throw new Error(`The source answered with ${response.status}.`);
   const verses = parseStrongs(await response.json(), bookNumber);
@@ -228,7 +230,7 @@ const fillLuganda = async (limit) => {
   );
   const queue = CHAPTERS.filter((entry) => !present.has(`${entry.book_number}:${entry.chapter}`)).slice(0, limit);
   const errors = [];
-  const messages = await runWithConcurrency(queue, 4, async (entry) => {
+  const messages = await runWithConcurrency(queue, 8, async (entry) => {
     try {
       const verses = await fetchLuganda(entry.book_number, entry.chapter);
       await saveChapter(entity, entry, verses);
@@ -240,7 +242,12 @@ const fillLuganda = async (limit) => {
   messages.forEach((message) => {
     if (message) errors.push(message);
   });
-  return { added: messages.length - errors.length, errors: errors.slice(0, 5), missing: queue.length - (messages.length - errors.length) };
+  return {
+    added: messages.length - errors.length,
+    failed: errors.length,
+    errors: errors.slice(0, 5),
+    missing: queue.length - (messages.length - errors.length)
+  };
 };
 
 /** Installs the chapters of the KJV+ Bible that are missing. */
@@ -252,7 +259,7 @@ const fillKjvPlus = async (limit) => {
   );
   const queue = CHAPTERS.filter((entry) => !present.has(`${entry.book_number}:${entry.chapter}`)).slice(0, limit);
   const errors = [];
-  const messages = await runWithConcurrency(queue, 4, async (entry) => {
+  const messages = await runWithConcurrency(queue, 8, async (entry) => {
     try {
       const verses = await fetchKjvPlus(entry.book_number, entry.chapter);
       await saveChapter(entity, entry, verses);
@@ -264,7 +271,12 @@ const fillKjvPlus = async (limit) => {
   messages.forEach((message) => {
     if (message) errors.push(message);
   });
-  return { added: messages.length - errors.length, errors: errors.slice(0, 5), missing: queue.length - (messages.length - errors.length) };
+  return {
+    added: messages.length - errors.length,
+    failed: errors.length,
+    errors: errors.slice(0, 5),
+    missing: queue.length - (messages.length - errors.length)
+  };
 };
 
 /**
@@ -381,10 +393,17 @@ const fillWords = async (limit) => {
 Deno.serve(async (req) => {
   try {
     const report = {};
-    report.luganda = await fillLuganda(300);
-    report.kjvplus = await fillKjvPlus(300);
-    report.words = await fillWords(3000);
-    return Response.json({ status: "success", report });
+    // A run takes every chapter that is missing, not only the first few.
+    report.luganda = await fillLuganda(1200);
+    report.kjvplus = await fillKjvPlus(1200);
+    report.words = await fillWords(6000);
+    const failed = (report.luganda.failed || 0) + (report.kjvplus.failed || 0);
+    const complete =
+      report.luganda.missing === 0 && report.kjvplus.missing === 0 && report.words.remaining === 0;
+    return Response.json({
+      status: complete ? "complete" : failed ? "partial" : "running",
+      report
+    });
   } catch (error) {
     return Response.json({ status: "error", error: error.message }, { status: 500 });
   }

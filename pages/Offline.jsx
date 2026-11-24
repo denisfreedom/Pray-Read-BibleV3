@@ -6,8 +6,13 @@ import { fetchPublicCollection } from "@/lib/contentApi";
 import { offline, chapterKey, STORES } from "@/lib/offlineDb";
 import { BIBLE_BOOKS } from "@/lib/bibleBooks";
 import { bytesToMb } from "@/lib/format";
-import { fetchChapter } from "@/lib/bibleApi";
-import { getVersionOrDefault, listInstalledVersions } from "@/lib/versions";
+import { chapterIsReadable, fetchChapter } from "@/lib/bibleApi";
+import { getVersion, getVersionOrDefault } from "@/lib/versions";
+import {
+  countOfflineStrong,
+  readOfflineStrongCodes,
+  writeOfflineStrongs
+} from "@/lib/strongsOffline";
 import { DownloadIcon, Trash2Icon, HardDriveIcon, CheckCircleIcon, Loader2Icon, BookOpenIcon, ArrowLeftIcon } from "lucide-react";
 
 const PLAN_BOOKS = ["John", "Psalms"];
@@ -15,12 +20,82 @@ const PLAN_BOOKS = ["John", "Psalms"];
 const SECTIONS = [
   { id: "bible", label: "Bible chapters", entity: "chapters" },
   { id: "verses", label: "Verses", entity: "verses" },
+  { id: "strongs", label: "Strong's dictionary", entity: "strongs" },
   { id: "devotionals", label: "Devotionals", entity: "devotionals" },
   { id: "commentary", label: "Commentary", entity: "commentary" },
   { id: "prayers", label: "Prayers", entity: "prayers" },
   { id: "qa", label: "Q&A", entity: "qa" },
   { id: "verseOfDay", label: "Verse of the day", entity: "verseOfDay" }
 ];
+
+// The translations of the Bible that the reader can carry with them.
+const TRANSLATIONS = [
+  { id: "kjv", label: "King James Version", note: "The classic English text of every book of the Bible." },
+  { id: "kjvp", label: "King James Version with Strong's numbers", note: "English, with every Greek and Hebrew word marked." },
+  { id: "luganda", label: "Luganda Bible", note: "The whole Bible in Luganda." }
+];
+
+/**
+ * Asks the app for the meaning of a list of Strong's numbers.
+ * The concordance of the app answers, so the dictionary on the device is the
+ * same one the reader sees online.
+ */
+const fetchStrongDefinitions = async (codes) => {
+  if (!codes || !codes.length) return [];
+  try {
+    const response = await fse2.functions.invoke("strongsDefinition", {
+      action: "list",
+      codes,
+      limit: 200
+    });
+    const data = response && response.data ? response.data : response;
+    return data && Array.isArray(data.rows) ? data.rows : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Asks the app for one page of the whole concordance of a language.
+ * It is used when no chapter on the device names the numbers, so the
+ * dictionary is whole all the same.
+ */
+const fetchStrongDictionary = async (language, offset) => {
+  try {
+    const response = await fse2.functions.invoke("strongsDefinition", {
+      action: "list",
+      language,
+      offset,
+      limit: 200
+    });
+    const data = response && response.data ? response.data : response;
+    return data && Array.isArray(data.rows) ? data.rows : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Fetches a chapter, and tries again when the connection gives way, so a
+ * weak signal does not leave holes in the Bible on the device.
+ */
+const loadChapter = async (options) => {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const data = await fetchChapter(options);
+      if (data.refresh && typeof data.refresh.then === "function") {
+        const fresh = await data.refresh.catch(() => null);
+        return fresh || data;
+      }
+      return data;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
+  }
+  throw lastError || new Error("the chapter could not be reached");
+};
 
 export default function Offline() {
   const [counts, setCounts] = useState({});
@@ -29,20 +104,16 @@ export default function Offline() {
   const [progress, setProgress] = useState({ label: "", done: 0, total: 0 });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const [bookScope, setBookScope] = useState("plan");
-  const [versionId, setVersionId] = useState("kjv");
-  const version = getVersionOrDefault(versionId);
-  const [installed, setInstalled] = useState([]);
-
-  useEffect(() => {
-    setInstalled(listInstalledVersions());
-  }, []);
+  const [failures, setFailures] = useState([]);
+  const [bookScope, setBookScope] = useState("all");
+  const [translationIds, setTranslationIds] = useState(["kjv", "kjvp", "luganda"]);
 
   const refresh = async () => {
     const next = {};
     for (const store of STORES) {
       next[store] = await offline.count(store).catch(() => 0);
     }
+    next.strongs = await countOfflineStrong();
     setCounts(next);
     const estimate = await offline.estimate().catch(() => ({ usage: 0, quota: 0 }));
     setUsage(estimate);
@@ -56,59 +127,187 @@ export default function Offline() {
     setSelected((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
 
+  const toggleTranslation = (id) => {
+    setTranslationIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  /**
+   * Stores every chapter of the chosen books and translations.
+   * A chapter that is already on the device and whole is left alone, so the
+   * download can be stopped and started again. Every chapter that could not
+   * be stored is written down, so the reader knows exactly what is missing.
+   */
+  const downloadChapters = async (books, translations, failures, tick) => {
+    const total = books.reduce((sum, book) => sum + (book.chapters || 0), 0) * translations.length;
+    let done = 0;
+    let stored = 0;
+    let verseRows = [];
+
+    // The verses are written in batches, so a long download does not open
+    // one transaction for every chapter.
+    const keepVerses = async () => {
+      if (!selected.includes("verses") || !verseRows.length) return;
+      const rows = verseRows;
+      verseRows = [];
+      await offline.putMany("verses", rows).catch(() => null);
+    };
+
+    for (const translation of translations) {
+      const record = getVersionOrDefault(translation);
+      if (!record) continue;
+      for (const book of books) {
+        await offline
+          .put("books", String(book.number), {
+            number: book.number,
+            name: book.name,
+            abbr: book.abbr,
+            luganda: book.luganda,
+            chapters: book.chapters
+          })
+          .catch(() => null);
+        for (let chapter = 1; chapter <= (book.chapters || 0); chapter += 1) {
+          setProgress({ label: `${record.short} ${book.name} ${chapter}`, done, total });
+          const key = chapterKey(book.number, chapter, record.language, record.id);
+          try {
+            const cached = await offline.get("chapters", key).catch(() => null);
+            if (cached && cached.verses && chapterIsReadable(cached.verses)) {
+              done += 1;
+              continue;
+            }
+            // The freshest text is the one that is kept, and it is asked for
+            // again when the connection gives way.
+            const payload = await loadChapter({
+              bookNumber: book.number,
+              bookName: book.name,
+              chapter,
+              language: record.language,
+              version: record.id
+            });
+            const verses = payload.verses || [];
+            if (!chapterIsReadable(verses)) throw new Error("the chapter came back incomplete");
+            if (record.strongs && !payload.strongs) {
+              throw new Error("the chapter came back without the Strong's numbers");
+            }
+            await offline.put("chapters", key, {
+              reference: payload.reference,
+              book: payload.book,
+              book_number: payload.book_number,
+              chapter: payload.chapter,
+              language: payload.language,
+              version: payload.version,
+              strongs: payload.strongs,
+              verse_count: verses.length,
+              verses
+            });
+            if (selected.includes("verses")) {
+              verseRows.push({
+                key: `${book.number}:${chapter}:${record.id}`,
+                value: verses.map((verse) => ({
+                  ...verse,
+                  book: book.name,
+                  book_number: book.number,
+                  chapter
+                }))
+              });
+              if (verseRows.length >= 50) await keepVerses();
+            }
+            stored += 1;
+          } catch (error) {
+            failures.push(`${record.short} ${book.name} ${chapter}: ${error.message || "could not be reached"}`);
+          }
+          done += 1;
+          await tick();
+        }
+      }
+    }
+    await keepVerses();
+
+    return { stored, done, total };
+  };
+
+  /**
+   * Keeps the Strong's numbers on the device.
+   * The definitions that are in the app are copied into the offline store,
+   * and the numbers the KJV+ chapters on this device carry are asked for by
+   * name, so the meaning of a word opens without a connection.
+   */
+  const downloadStrongs = async (failures, tick) => {
+    const pageSize = 500;
+    let offset = 0;
+    let stored = 0;
+    for (let page = 0; page < 40; page += 1) {
+      setProgress({ label: "Strong's dictionary", done: offset, total: offset });
+      const rows = await fse2.entities.StrongEntry.list("-updated_date", pageSize, offset).catch(() => []);
+      if (!rows || !rows.length) break;
+      const wanted = rows.filter((row) => row && row.code && row.definition);
+      const saved = await writeOfflineStrongs(wanted);
+      stored += saved;
+      if (saved < wanted.length) {
+        failures.push(`${wanted.length - saved} Strong's numbers could not be kept on this device`);
+      }
+      offset += rows.length;
+      if (rows.length < pageSize) break;
+      await tick();
+    }
+
+    // The numbers the KJV+ chapters on this device really use are asked for
+    // by name, so the whole dictionary is on the phone and not only the few
+    // words the app happens to keep.
+    const codes = await readOfflineStrongCodes();
+    for (let index = 0; index < codes.length; index += 150) {
+      const batch = codes.slice(index, index + 150);
+      setProgress({ label: "Strong's dictionary", done: offset + index, total: offset + codes.length });
+      const rows = await fetchStrongDefinitions(batch);
+      if (!rows.length) {
+        failures.push(`${batch.length} Strong's numbers could not be fetched`);
+        break;
+      }
+      const saved = await writeOfflineStrongs(rows);
+      stored += saved;
+      if (saved < rows.length) {
+        failures.push(`${rows.length - saved} Strong's numbers could not be kept on this device`);
+      }
+      await tick();
+    }
+
+    // When no chapter on the device names the numbers, the whole concordance
+    // is asked for, a page at a time.
+    if (!codes.length) {
+      for (const language of ["Greek", "Hebrew"]) {
+        for (let page = 0; page < 120; page += 1) {
+          setProgress({ label: `Strong's dictionary (${language})`, done: offset, total: offset + 1200 });
+          const rows = await fetchStrongDictionary(language, page * 200);
+          if (!rows.length) break;
+          const saved = await writeOfflineStrongs(rows);
+          stored += saved;
+          if (rows.length < 200) break;
+          await tick();
+        }
+      }
+    }
+    return { stored, total: offset + codes.length };
+  };
+
   const download = async () => {
     setBusy(true);
     setStatus("");
+    setFailures([]);
+    const failures = [];
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
     try {
+      let chapters = { stored: 0, done: 0, total: 0 };
       if (selected.includes("bible")) {
         const books =
           bookScope === "all" ? BIBLE_BOOKS : BIBLE_BOOKS.filter((book) => PLAN_BOOKS.includes(book.name));
-        const total = books.reduce((sum, book) => sum + (book.chapters || 0), 0);
-        let done = 0;
-        for (const book of books) {
-          for (let chapter = 1; chapter <= (book.chapters || 0); chapter += 1) {
-            setProgress({ label: `${book.name} ${chapter}`, done, total });
-            try {
-              const data = await fetchChapter({
-                bookNumber: book.number,
-                bookName: book.name,
-                chapter,
-                language: version.language,
-                version: version.id
-              });
-              await offline.put(
-                "chapters",
-                chapterKey(book.number, chapter, version.language, version.id),
-                {
-                  reference: data.reference,
-                  book: data.book,
-                  book_number: data.book_number,
-                  chapter: data.chapter,
-                  language: data.language,
-                  version: data.version,
-                  strongs: data.strongs,
-                  verses: data.verses
-                }
-              );
-              if (selected.includes("verses")) {
-                await offline.put(
-                  "verses",
-                  `${book.number}:${chapter}`,
-                  (data.verses || []).map((verse) => ({
-                    ...verse,
-                    book: book.name,
-                    book_number: book.number,
-                    chapter
-                  }))
-                );
-              }
-            } catch {
-              // A missing chapter must not stop the rest of the download.
-            }
-            done += 1;
-            await new Promise((resolve) => setTimeout(resolve, 0));
-          }
-        }
+        // The translations are kept as their ids, so every one of them is
+        // fetched in its own language and with its own Strong's numbers.
+        const translations = translationIds.map((id) => getVersion(id)).filter(Boolean);
+        chapters = await downloadChapters(books, translations, failures, tick);
+      }
+
+      let strongs = { stored: 0, total: 0 };
+      if (selected.includes("strongs")) {
+        strongs = await downloadStrongs(failures, tick);
       }
 
       if (selected.includes("devotionals")) {
@@ -122,6 +321,14 @@ export default function Offline() {
           for (const item of DEVOTIONALS) {
             await offline.put("devotionals", item.code, item);
           }
+        }
+      }
+
+      if (selected.includes("commentary")) {
+        setProgress({ label: "Commentary", done: 0, total: 1 });
+        const rows = await fetchPublicCollection("commentary", { authenticated: true }).catch(() => []);
+        for (const row of rows || []) {
+          await offline.put("commentary", `${row.book}:${row.chapter}`, row);
         }
       }
 
@@ -149,7 +356,20 @@ export default function Offline() {
         }
       }
 
-      setStatus("Download finished. These sections now work without a connection.");
+      setFailures(failures);
+      const parts = [];
+      if (selected.includes("bible")) {
+        parts.push(`${chapters.stored} chapters stored (${chapters.done} of ${chapters.total} walked through)`);
+      }
+      if (selected.includes("strongs")) {
+        parts.push(`${strongs.stored} Strong's numbers kept on this device`);
+      }
+      const failed = failures.length;
+      setStatus(
+        failed
+          ? `The download finished with ${failed} item${failed === 1 ? "" : "s"} that could not be stored. The rest is ready: ${parts.join(", ")}. Run it again to finish the rest.`
+          : `The download finished. ${parts.join(", ")}. These sections now work without a connection.`
+      );
       await refresh();
     } catch (err) {
       setStatus(err.message || "The download stopped early. Try again when you have a steadier connection.");
@@ -164,6 +384,7 @@ export default function Offline() {
     try {
       await offline.clearAll();
       await refresh();
+      setFailures([]);
       setStatus("Offline data cleared from this device.");
     } finally {
       setBusy(false);
@@ -183,8 +404,9 @@ export default function Offline() {
             Offline centre
           </h1>
           <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.8)", maxWidth: "60ch" }}>
-            Download what you need before you travel. The Bible, devotionals, prayers, commentary, cross-references
-            and the verse of the day all work in flight mode.
+            Download what you need before you travel. The Bible in English, with the Strong&apos;s numbers, and in
+            Luganda, the whole Strong&apos;s dictionary, devotionals, prayers, commentary, cross-references and the
+            verse of the day all work in flight mode.
           </p>
         </div>
       </section>
@@ -196,7 +418,8 @@ export default function Offline() {
               <DownloadIcon className="h-4 w-4" style={{ display: "inline", color: "var(--pr-gold-deep)" }} /> Download manager
             </h2>
             <p style={{ margin: "0 0 16px", fontSize: "0.88rem" }}>
-              Choose what to store on this device, then run the download.
+              Choose what to store on this device, then run the download. A chapter that is already stored is left
+              alone, so the download can be stopped and started again.
             </p>
 
             <div className="pr-field" style={{ marginBottom: 12 }}>
@@ -209,29 +432,38 @@ export default function Offline() {
                 value={bookScope}
                 onChange={(event) => setBookScope(event.target.value)}
               >
+                <option value="all">Every book in the Bible (1,189 chapters)</option>
                 <option value="plan">The reading plan books (John and Psalms)</option>
-                <option value="all">Every book in the Bible</option>
               </select>
             </div>
 
             <div className="pr-field" style={{ marginBottom: 16 }}>
-              <label className="pr-label" htmlFor="offline-version">
-                Bible version to install
-              </label>
-              <select
-                id="offline-version"
-                className="pr-input"
-                value={versionId}
-                onChange={(event) => setVersionId(event.target.value)}
-              >
-                {(installed.length ? installed : listInstalledVersions()).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
+              <span className="pr-label">Which translations to store</span>
+              <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                {TRANSLATIONS.map((translation) => (
+                  <label
+                    key={translation.id}
+                    style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: "0.9rem" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={translationIds.includes(translation.id)}
+                      onChange={() => toggleTranslation(translation.id)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <strong>{translation.label}</strong>
+                      <br />
+                      <span style={{ fontSize: "0.78rem", color: "var(--pr-body)" }}>{translation.note}</span>
+                    </span>
+                  </label>
                 ))}
-              </select>
+              </div>
               <p style={{ margin: "8px 0 0", fontSize: "0.78rem", color: "var(--pr-body)" }}>
-                {version.note} More versions are installed from the Bible Reader.
+                The whole Bible in all three translations is 3,567 chapters, so it takes a while on a slow
+                connection. You can leave the page open: every chapter that is already stored is skipped, a
+                chapter that could not be reached is asked for again, and the download carries on where it
+                stopped.
               </p>
             </div>
 
@@ -265,6 +497,19 @@ export default function Offline() {
             ) : null}
 
             {status ? <div className="pr-success" style={{ marginTop: 16 }}>{status}</div> : null}
+
+            {failures.length ? (
+              <div style={{ marginTop: 16 }}>
+                <p style={{ margin: "0 0 8px", fontSize: "0.85rem", fontWeight: 700 }}>
+                  {failures.length} item{failures.length === 1 ? "" : "s"} could not be stored
+                </p>
+                <ul className="pr-list-reset" style={{ display: "grid", gap: 4, fontSize: "0.78rem" }}>
+                  {failures.slice(0, 25).map((failure) => (
+                    <li key={failure}>{failure}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
 
           <div className="pr-card pr-card-pad">

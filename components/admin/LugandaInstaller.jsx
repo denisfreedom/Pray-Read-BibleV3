@@ -80,7 +80,7 @@ export default function LugandaInstaller() {
 
       let data = null;
       for (let round = 0; round < 60; round += 1) {
-        data = await call("install", { limit: 60 });
+        data = await call("install", { limit: 250 });
         setStatus(data);
         if (data.done) {
           setTone("success");
@@ -115,7 +115,7 @@ export default function LugandaInstaller() {
     setNote("");
     setTone("success");
     try {
-      const data = await call("repair", { limit: 60 });
+      const data = await call("repair", { limit: 250 });
       setStatus(data);
       if (data.repaired) {
         setNote(`${data.repaired} chapters were downloaded again. ${data.missing} chapters are still missing.`);
@@ -235,8 +235,9 @@ export default function LugandaInstaller() {
         <p className="pr-success" style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
           <CheckIcon className="h-4 w-4" style={{ flex: "0 0 auto", marginTop: 2 }} />
           <span>
-            Every chapter is checked against the 1,189 chapters of the Bible, so a chapter that failed to
-            download is never counted as installed.
+            Every chapter is checked against the 1,189 chapters of the Bible, and its verses must be numbered
+            in one run from 1 to the end, so a chapter that failed to download, or that was cut in half, is
+            never counted as installed.
           </span>
         </p>
       </div>

@@ -152,7 +152,9 @@ const fetchChapterText = async (bookNumber, chapter) => {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    }
+    },
+    // A source that stops answering must not hold the whole install up.
+    signal: AbortSignal.timeout(20000)
   });
   if (!response.ok) throw new Error(`The source answered with ${response.status}.`);
   const raw = await response.json();
@@ -196,6 +198,39 @@ const countLines = (raw) =>
 
 const hasMarkers = (raw) => /[GH]\d{1,5}/.test(String(raw || ""));
 
+/** The verse numbers that are really stored in a chapter. */
+const verseNumbers = (raw) =>
+  String(raw || "")
+    .split("\n")
+    .map((line) => {
+      const tab = line.indexOf("\t");
+      if (tab <= 0) return null;
+      const number = Number(line.slice(0, tab).trim());
+      return Number.isFinite(number) ? number : null;
+    })
+    .filter((number) => number !== null);
+
+/**
+ * Says how a chapter stands.
+ * A chapter is ready when its verses are numbered in one run from 1 to the
+ * end, when the count that is stored matches them, and when the Strong's
+ * numbers are there. A chapter that was cut in half, that lost a verse or
+ * that was stored without its numbers is reported as broken, so it is
+ * downloaded again instead of being counted as installed.
+ */
+const chapterState = (row, expectMarkers) => {
+  const numbers = verseNumbers(row.verses);
+  if (!numbers.length) return "broken";
+  const lines = countLines(row.verses);
+  if (lines !== numbers.length) return "broken";
+  if (row.verse_count && Number(row.verse_count) !== lines) return "broken";
+  for (let index = 0; index < numbers.length; index += 1) {
+    if (numbers[index] !== index + 1) return "broken";
+  }
+  if (expectMarkers && !hasMarkers(row.verses)) return "broken";
+  return "ready";
+};
+
 const saveChapter = async (chapter, verses) => {
   const values = {
     book_number: chapter.book_number,
@@ -228,8 +263,16 @@ const audit = (rows) => {
   const duplicates = [];
   for (const row of rows) {
     const key = `${row.book_number}:${row.chapter}`;
-    if (stored.has(key)) duplicates.push(key);
-    else stored.set(key, row);
+    if (stored.has(key)) {
+      duplicates.push(key);
+      // When a chapter was written twice, the newest copy is the one that counts.
+      const kept = stored.get(key);
+      const keptTime = new Date(kept.updated_date || kept.created_date || 0).getTime();
+      const rowTime = new Date(row.updated_date || row.created_date || 0).getTime();
+      if (rowTime >= keptTime) stored.set(key, row);
+    } else {
+      stored.set(key, row);
+    }
   }
   const books = [];
   let missing = 0;
@@ -246,9 +289,7 @@ const audit = (rows) => {
         continue;
       }
       installed += 1;
-      const lines = countLines(row.verses);
-      const sound = lines > 0 && (!row.verse_count || Number(row.verse_count) === lines);
-      if (sound && hasMarkers(row.verses)) ready += 1;
+      if (chapterState(row, true) === "ready") ready += 1;
       else brokenChapters.push(chapter);
     }
     missing += missingChapters.length;
@@ -291,7 +332,7 @@ const runWithConcurrency = async (items, limit, worker) => {
 /** Downloads one chapter and keeps it in the app, trying it twice. */
 const installChapter = async (entry) => {
   let lastError = "";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const verses = await fetchChapterText(entry.book_number, entry.chapter);
       await saveChapter(entry, verses);
@@ -329,7 +370,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "install") {
-      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 80);
+      // One call can now carry the whole Bible: the installer no longer stops
+      // at eighty chapters.
+      const limit = Math.min(Math.max(Number(body.limit) || 1200, 1), 1200);
       const rows = await readInstalled();
       const present = new Set(rows.map((row) => `${row.book_number}:${row.chapter}`));
       let queue = CHAPTERS.filter((entry) => !present.has(`${entry.book_number}:${entry.chapter}`));
@@ -341,7 +384,7 @@ Deno.serve(async (req) => {
       }
       queue = queue.slice(0, limit);
 
-      const messages = await runWithConcurrency(queue, 4, installChapter);
+      const messages = await runWithConcurrency(queue, 8, installChapter);
       const errors = messages.filter((message) => message);
       const added = messages.length - errors.length;
 
@@ -362,7 +405,9 @@ Deno.serve(async (req) => {
 
     // Downloads again the chapters that are in the app but cannot be read.
     if (action === "repair") {
-      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 80);
+      // One call can now carry the whole Bible: the installer no longer stops
+      // at eighty chapters.
+      const limit = Math.min(Math.max(Number(body.limit) || 1200, 1), 1200);
       const report = audit(await readInstalled());
       const queue = report.books.flatMap((book) =>
         book.broken.map((chapter) => ({
@@ -372,7 +417,7 @@ Deno.serve(async (req) => {
         }))
       );
       const targets = queue.slice(0, limit);
-      const messages = await runWithConcurrency(targets, 4, installChapter);
+      const messages = await runWithConcurrency(targets, 8, installChapter);
       const errors = messages.filter((message) => message);
       const repaired = messages.length - errors.length;
       const after = audit(await readInstalled());

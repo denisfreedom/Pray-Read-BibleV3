@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BookOpenIcon, ExternalLinkIcon, Loader2Icon, XIcon } from "lucide-react";
 import { fse2 } from "@/api/fse2Client";
 import { normalizeStrongCode, strongLanguage, strongLexiconUrl } from "@/lib/strongs";
+import { readOfflineStrong, writeOfflineStrong } from "@/lib/strongsOffline";
 
 /**
  * Keeps a copy of a definition in the app.
@@ -61,13 +62,25 @@ export default function StrongsPopup({ code, word = "", onClose }) {
       return true;
     };
 
-    // The copy the app keeps comes first: it is there in a moment.
+    // The copy on the device comes first: it is there at once, and it is
+    // the one that works when there is no connection.
+    const readDevice = async () => {
+      const row = await readOfflineStrong(key);
+      if (row && row.definition) {
+        show(row);
+        return row;
+      }
+      return null;
+    };
+
+    // Then the copy the app keeps: it is there in a moment.
     const readCache = async () => {
       try {
         const rows = await fse2.entities.StrongEntry.filter({ code: key });
         const row = (rows || [])[0];
         if (row && row.definition) {
           show(row);
+          writeOfflineStrong(row);
           return row;
         }
       } catch {
@@ -85,6 +98,9 @@ export default function StrongsPopup({ code, word = "", onClose }) {
           // The administrator keeps a copy of every word they open, so the
           // next reader gets the answer straight away.
           storeEntry(data);
+          // The word is kept on the device as well, so the card opens even
+          // when the reader is out of reach.
+          writeOfflineStrong({ ...data, code: key });
           return;
         }
         const cached = await readCache();
@@ -95,8 +111,14 @@ export default function StrongsPopup({ code, word = "", onClose }) {
       }
     };
 
-    readCache();
-    readLive();
+    const start = async () => {
+      const onDevice = await readDevice();
+      if (onDevice || cancelled) return;
+      const cached = await readCache();
+      if (cached || cancelled) return;
+      await readLive();
+    };
+    start();
 
     return () => {
       cancelled = true;

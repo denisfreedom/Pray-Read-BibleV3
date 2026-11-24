@@ -306,7 +306,15 @@ export default function Chapter() {
         setVerses(data.verses || []);
         setHasStrongs(Boolean(data.strongs));
         if (data.refresh && typeof data.refresh.then === "function") {
-          data.refresh.then((fresh) => { if (active && fresh && fresh.verses) setVerses(fresh.verses); }).catch(() => {});
+          // The fresher text keeps the Strong's state in step with the verses,
+          // so the marked words never lose their numbers between two readings.
+          data.refresh
+            .then((fresh) => {
+              if (!active || !fresh || !fresh.verses) return;
+              setVerses(fresh.verses);
+              setHasStrongs(Boolean(fresh.strongs));
+            })
+            .catch(() => {});
         }
       } catch (err) {
         if (!active) return;
@@ -424,14 +432,19 @@ export default function Chapter() {
     window.setTimeout(() => setToast(""), 2200);
   };
 
-  const goToChapter = (number) => navigate(createPageUrl("Chapter") + `?book=${book.number}&chapter=${number}&lang=${language}`);
+  // The version travels with the reader, so moving to the next chapter
+  // never drops the Strong's numbers of the KJV+.
+  const goToChapter = (number) =>
+    navigate(
+      createPageUrl("Chapter") + `?book=${book.number}&chapter=${number}&lang=${language}&version=${versionId}`
+    );
   const stepChapter = useCallback((delta) => {
     const target = chapter + delta;
     if (target < 1) return;
     if (target <= book.chapters) { goToChapter(target); return; }
     const index = BIBLE_BOOKS.findIndex((item) => item.number === book.number);
     const nextBook = BIBLE_BOOKS.find((item, position) => position === index + 1);
-    if (nextBook) navigate(createPageUrl("Chapter") + `?book=${nextBook.number}&chapter=1&lang=${language}`);
+    if (nextBook) navigate(createPageUrl("Chapter") + `?book=${nextBook.number}&chapter=1&lang=${language}&version=${versionId}`);
   }, [chapter, book.chapters, book.number, language, navigate]);
 
   // The left and right arrows move through the chapters when the reader is
@@ -510,7 +523,7 @@ export default function Chapter() {
     return set;
   }, [readingRows, email, book.name]);
 
-  const shareUrl = `${window.location.origin}${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}${shareVerse ? `&verse=${shareVerse}` : ""}&lang=${language}`;
+  const shareUrl = `${window.location.origin}${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}${shareVerse ? `&verse=${shareVerse}` : ""}&lang=${language}&version=${versionId}`;
 
   const handleShare = async (verseNumber) => {
     const verse = verses.find((row) => row.verse === verseNumber);
@@ -940,7 +953,7 @@ export default function Chapter() {
           reference={`${getBookByNumber(crossRef.book)?.name || "Passage"} ${crossRef.chapter}:${crossRef.verse}`}
           verseText={crossRef.text}
           onClose={() => setCrossRef(null)}
-          chapterUrl={`?book=${crossRef.book}&chapter=${crossRef.chapter}&verse=${crossRef.verse}&lang=${language}`}
+          chapterUrl={`?book=${crossRef.book}&chapter=${crossRef.chapter}&verse=${crossRef.verse}&lang=${language}&version=${versionId}`}
         />
       ) : null}
 
