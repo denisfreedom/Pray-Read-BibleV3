@@ -85,7 +85,8 @@ const parseWordplanet = (html) => {
   }
   const verses = [];
   found.forEach((entry, index) => {
-    const stop = index + 1 < found.length ? found[index + 1].to : body.length;
+    const next = found.slice(index + 1);
+    const stop = next.length ? next[0].to : body.length;
     const text = decodeEntities(cleanText(body.slice(entry.from, stop)));
     if (!Number.isFinite(entry.number) || !text) return;
     verses.push({ verse: entry.number, text });

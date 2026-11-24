@@ -1,23 +1,24 @@
-// Looks up the definition of a Strong's number.
+// Keeps the definitions of the Strong's numbers in the app.
 //
-// The definition is taken from the public Blue Letter Bible lexicon and is
-// kept in the app, so the next reader of the same word does not have to
-// wait for the request, and so a word that was opened once opens again
-// straight away.
+// The whole concordance is taken from the public Strong's dictionaries, so
+// every Greek and Hebrew word of the Bible can be opened, from Genesis to
+// Revelation. The words are kept in the app, so the next reader of the same
+// word gets the answer straight away.
+//
+// The live lexicon of Blue Letter Bible stays the second source: it is used
+// for a word that the concordance does not carry, and for the extra details
+// such as the pronunciation and the part of speech.
 //
 // The function is open to every reader: it only reads and writes the
-// definition cache.
+// definition cache. The administrator is the one who fills it.
 
 const LEXICON_BASE = "https://www.blueletterbible.org/lexicon";
-const KJV_SOURCE = "https://bolls.life/get-chapter/KJV";
+const DICTIONARIES = {
+  Greek: "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js",
+  Hebrew: "https://raw.githubusercontent.com/openscriptures/strongs/master/hebrew/strongs-hebrew-dictionary.js"
+};
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-
-// A few chapters of the KJV, used to find the words that are read most.
-const SAMPLE_CHAPTERS = [
-  [43, 1], [43, 2], [43, 3], [43, 4], [1, 1], [1, 2], [1, 3], [19, 1],
-  [19, 23], [40, 1], [40, 5], [40, 6], [56, 1], [58, 1], [59, 1]
-];
 
 const decodeEntities = (text) =>
   String(text || "")
@@ -113,11 +114,17 @@ const parseLexicon = (html) => {
   };
 };
 
-/** Asks the lexicon for one word. */
+/** Asks the live lexicon for one word. */
 const fetchEntry = async (code) => {
-  const response = await fetch(lexiconUrl(code), {
-    headers: { "User-Agent": USER_AGENT }
-  });
+  let response = null;
+  try {
+    response = await fetch(lexiconUrl(code), {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(8000)
+    });
+  } catch {
+    return null;
+  }
   if (!response.ok) return null;
   const html = await response.text();
   const parsed = parseLexicon(html);
@@ -135,6 +142,81 @@ const fetchEntry = async (code) => {
   };
 };
 
+/**
+ * Reads the concordance file.
+ * The file is the list of the words of the language in the JSON format. If
+ * the file is not plain JSON, every entry is taken out of it one by one, so
+ * a small change in the file never stops the whole concordance.
+ */
+const parseDictionaryFile = (text) => {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      // The file is not plain JSON: the entries are taken one by one.
+    }
+  }
+  const words = {};
+  const entry = /"([GH]\d+)"\s*:\s*\{([^{}]*)\}/gi;
+  let match = entry.exec(text);
+  while (match) {
+    const body = match[2];
+    const field = (name) => {
+      const found = new RegExp(`"${name}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(body);
+      return found ? found[1] : "";
+    };
+    const code = normalizeCode(match[1]);
+    if (code) {
+      words[code] = {
+        strongs_def: field("strongs_def"),
+        kjv_def: field("kjv_def"),
+        derivation: field("derivation"),
+        translit: field("translit"),
+        lemma: field("lemma")
+      };
+    }
+    match = entry.exec(text);
+  }
+  return words;
+};
+
+/**
+ * Reads the whole concordance of one language.
+ * The file is a list of every word of the language, with its number, its
+ * meaning and where the word comes from.
+ */
+const fetchDictionary = async (language) => {
+  const url = DICTIONARIES[language];
+  if (!url) return {};
+  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+  if (!response.ok) throw new Error(`The ${language} concordance answered with ${response.status}.`);
+  const raw = parseDictionaryFile(await response.text());
+  const words = {};
+  for (const key of Object.keys(raw || {})) {
+    const code = normalizeCode(key);
+    if (!code) continue;
+    const entry = raw[key] || {};
+    const short = String(entry.kjv_def || "").trim();
+    const full = String(entry.strongs_def || "").trim();
+    const definition = short && full ? `${short}: ${full}` : full || short;
+    if (!definition) continue;
+    words[code] = {
+      code,
+      language,
+      original_word: String(entry.lemma || "").trim(),
+      transliteration: String(entry.translit || "").trim(),
+      pronunciation: "",
+      part_of_speech: "",
+      root_word: String(entry.derivation || "").trim(),
+      definition,
+      source: "Strong's Exhaustive Concordance"
+    };
+  }
+  return words;
+};
+
 const readCached = async (code) => {
   try {
     const rows = await fse2.entities.StrongEntry.filter({ code });
@@ -144,13 +226,31 @@ const readCached = async (code) => {
   }
 };
 
-const readCachedCodes = async () => {
-  try {
-    const rows = await fse2.entities.StrongEntry.list("-updated_date", 1000);
-    return new Set((rows || []).map((row) => row.code).filter(Boolean));
-  } catch {
-    return new Set();
+/** The numbers that are already kept in the app, of one language or of all. */
+const readCachedCodes = async (language = "") => {
+  const codes = new Set();
+  const pageSize = 500;
+  let firstCodeOfLastPage = "";
+  for (let offset = 0; offset < 40000; offset += pageSize) {
+    let batch = [];
+    try {
+      batch = language
+        ? await fse2.entities.StrongEntry.filter({ language }, "-updated_date", pageSize, offset)
+        : await fse2.entities.StrongEntry.list("-updated_date", pageSize, offset);
+    } catch {
+      break;
+    }
+    if (!batch || !batch.length) break;
+    for (const row of batch) {
+      if (row && row.code) codes.add(row.code);
+    }
+    // The same page twice means the list did not move on: the reading stops.
+    const first = batch[0] && batch[0].code ? batch[0].code : "";
+    if (first && first === firstCodeOfLastPage) break;
+    firstCodeOfLastPage = first;
+    if (batch.length < pageSize) break;
   }
+  return codes;
 };
 
 const keepEntry = async (values) => {
@@ -167,35 +267,35 @@ const keepEntry = async (values) => {
   }
 };
 
-/** The words that are read most often, taken from a few chapters of the KJV. */
-const commonCodes = async () => {
-  const tally = new Map();
-  for (const [book, chapter] of SAMPLE_CHAPTERS) {
+/**
+ * Keeps a list of words in the app, a hundred at a time.
+ * Every word of the batch is looked up first, so a word that is already in
+ * the app is never written a second time.
+ */
+const keepEntries = async (entries) => {
+  let kept = 0;
+  for (let index = 0; index < entries.length; index += 100) {
+    const chunk = entries.slice(index, index + 100);
+    const found = await Promise.all(
+      chunk.map((entry) => fse2.entities.StrongEntry.filter({ code: entry.code }).catch(() => []))
+    );
+    const fresh = chunk.filter((entry, position) => !(found[position] && found[position].length));
+    if (!fresh.length) continue;
     try {
-      const response = await fetch(`${KJV_SOURCE}/${book}/${chapter}?bolls_format=true`, {
-        headers: { "User-Agent": USER_AGENT }
-      });
-      if (!response.ok) continue;
-      const raw = await response.json();
-      const list = Array.isArray(raw) ? raw : (raw && raw.verses) || [];
-      const prefix = Number(book) >= 40 ? "G" : "H";
-      for (const row of list) {
-        const text = String((row && row.text) || "");
-        const found = text.match(/<S>\s*([A-Za-z]?\d{1,5})\s*<\/S>/gi) || [];
-        for (const token of found) {
-          const digits = token.match(/\d+/);
-          if (!digits) continue;
-          const code = `${prefix}${Number(digits[0])}`;
-          tally.set(code, (tally.get(code) || 0) + 1);
+      await fse2.entities.StrongEntry.bulkCreate(fresh);
+      kept += fresh.length;
+    } catch {
+      for (const entry of fresh) {
+        try {
+          await keepEntry(entry);
+          kept += 1;
+        } catch {
+          // A word that cannot be kept is simply looked up again later.
         }
       }
-    } catch {
-      // A chapter that cannot be read is simply left out.
     }
   }
-  return Array.from(tally.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([code]) => code);
+  return kept;
 };
 
 Deno.serve(async (req) => {
@@ -203,28 +303,62 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const action = String(body.action || "one");
 
-    // The words that are read most often, so the app can keep them ready.
-    if (action === "codes") {
-      const codes = await commonCodes();
-      return Response.json({ codes, total: codes.length });
+    // How much of the concordance is kept in the app.
+    if (action === "status") {
+      const languages = body.language ? [String(body.language)] : ["Greek", "Hebrew"];
+      const report = {};
+      let total = 0;
+      let cached = 0;
+      for (const language of languages) {
+        let words = {};
+        try {
+          words = await fetchDictionary(language);
+        } catch {
+          words = {};
+        }
+        const codes = await readCachedCodes(language);
+        const keys = Object.keys(words);
+        report[language] = { total: keys.length, cached: keys.filter((code) => codes.has(code)).length };
+        total += keys.length;
+        cached += report[language].cached;
+      }
+      return Response.json({ total, cached, missing: Math.max(total - cached, 0), languages: report });
     }
 
-    // A batch of definitions, for the administrator who keeps them ready.
+    // Fills the concordance into the app, a batch at a time.
     if (action === "prepare") {
-      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 30);
-      const known = await readCachedCodes();
-      const codes = await commonCodes();
-      const wanted = codes.filter((code) => !known.has(code)).slice(0, limit);
-      const entries = [];
-      for (const code of wanted) {
-        const entry = await fetchEntry(code);
-        if (entry) entries.push(entry);
+      const limit = Math.min(Math.max(Number(body.limit) || 800, 1), 4000);
+      const languages = body.language ? [String(body.language)] : ["Greek", "Hebrew"];
+      const report = {};
+      let prepared = 0;
+      let missing = 0;
+      let total = 0;
+      let cached = 0;
+      for (const language of languages) {
+        const words = await fetchDictionary(language);
+        const keys = Object.keys(words);
+        const codes = await readCachedCodes(language);
+        const wanted = keys.filter((code) => !codes.has(code));
+        const batch = wanted.slice(0, limit);
+        const kept = await keepEntries(batch.map((code) => words[code]));
+        prepared += kept;
+        missing += Math.max(wanted.length - kept, 0);
+        total += keys.length;
+        cached += keys.length - wanted.length;
+        report[language] = {
+          total: keys.length,
+          cached: keys.length - wanted.length,
+          prepared: kept,
+          remaining: Math.max(wanted.length - kept, 0)
+        };
       }
       return Response.json({
-        entries,
-        prepared: entries.length,
-        remaining: codes.filter((code) => !known.has(code)).length - wanted.length,
-        total: codes.length
+        prepared,
+        remaining: missing,
+        total,
+        cached,
+        done: missing === 0,
+        languages: report
       });
     }
 
@@ -244,12 +378,25 @@ Deno.serve(async (req) => {
         part_of_speech: cached.part_of_speech || "",
         root_word: cached.root_word || "",
         definition: cached.definition,
-        source: cached.source || "Blue Letter Bible",
+        source: cached.source || "Strong's Exhaustive Concordance",
         cached: true
       });
     }
 
-    const entry = await fetchEntry(code);
+    // The live lexicon first: it carries the pronunciation and the kind of
+    // word as well.
+    let entry = await fetchEntry(code);
+    if (!entry) {
+      // Then the concordance, which carries every word of the Bible.
+      const language = code.startsWith("G") ? "Greek" : "Hebrew";
+      try {
+        const words = await fetchDictionary(language);
+        entry = words[code] || null;
+      } catch {
+        entry = null;
+      }
+    }
+
     if (!entry) {
       return Response.json({ error: `No definition was found for ${code}.` }, { status: 404 });
     }

@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { APPLE_ICON_URL } from "@/lib/theme";
+import { APPLE_ICON_URL, FAVICON_URL } from "@/lib/theme";
 
 /**
  * Adds the PWA meta tags to the document head and registers the service
@@ -24,19 +24,27 @@ export default function PwaHead() {
     addMeta({ name: "mobile-web-app-capable", content: "yes" });
     addMeta({ name: "description", content: "Pray · Read · Listen  -  the Bible, devotionals and prayer in English and Luganda." });
 
-    if (!head.querySelector('link[rel="manifest"]')) {
+    const addLink = (rel, href, type) => {
+      const existing = Array.from(head.querySelectorAll(`link[rel="${rel}"]`));
+      if (existing.length) {
+        existing.forEach((link) => {
+          link.setAttribute("href", href);
+          if (type) link.setAttribute("type", type);
+        });
+        return;
+      }
       const link = document.createElement("link");
-      link.rel = "manifest";
-      link.href = "/manifest.json";
+      link.rel = rel;
+      link.href = href;
+      if (type) link.setAttribute("type", type);
       head.appendChild(link);
-    }
+    };
 
-    if (!head.querySelector('link[rel="apple-touch-icon"]')) {
-      const link = document.createElement("link");
-      link.rel = "apple-touch-icon";
-      link.href = APPLE_ICON_URL;
-      head.appendChild(link);
-    }
+    addLink("manifest", "/manifest.json");
+    // The favicon the browser shows on the tab.
+    addLink("icon", FAVICON_URL, "image/x-icon");
+    addLink("shortcut icon", FAVICON_URL, "image/x-icon");
+    addLink("apple-touch-icon", APPLE_ICON_URL, "image/png");
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);

@@ -74,8 +74,8 @@ export default function About() {
               <div className="pr-card pr-card-pad">
                 <img
                   src={LOGO_URL}
-                  alt="Pray-Read Bible"
-                  style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid var(--pr-gold)" }}
+                  alt="Pray Read Bible"
+                  style={{ width: 44, height: 44, borderRadius: 14, objectFit: "contain" }}
                 />
                 <p className="pr-heading" style={{ margin: "10px 0 0", fontWeight: 800 }}>
                   Free and open

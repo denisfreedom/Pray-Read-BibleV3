@@ -49,7 +49,7 @@ export default function Home() {
           <span className="pr-eyebrow pr-eyebrow-light">Pray · Read · Listen</span>
           <h1 className="pr-hero-title">The Word, the prayer and the habit that holds.</h1>
           <p className="pr-hero-text">
-            Pray-Read Bible takes you through scripture in English and Luganda, then walks with you into
+            Pray · Read · Listen takes you through scripture in English and Luganda, then walks with you into
             prayer. Read a chapter, keep what matters, and come back tomorrow.
           </p>
           <div className="pr-hero-actions">

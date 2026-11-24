@@ -37,15 +37,11 @@ export default function AppFooter() {
               ) : (
                 <img
                   src={LOGO_URL}
-                  alt="Pray-Read Bible"
+                  alt="Pray Read Bible"
                   className="pr-brand-logo"
                   onError={() => setLogoFailed(true)}
                 />
               )}
-            </span>
-            <span className="pr-wordmark">
-              <span className="pr-wordmark-light">Pray-Read</span>{" "}
-              <span className="pr-wordmark-gold">Bible</span>
             </span>
           </div>
           <p className="pr-footer-text">
@@ -75,7 +71,7 @@ export default function AppFooter() {
               <Link to={createPageUrl("Contact")}>Send us a message</Link>
             </li>
             <li>
-              <Link to={createPageUrl("About")}>About Pray-Read</Link>
+              <Link to={createPageUrl("About")}>About this ministry</Link>
             </li>
             <li>
               <Link to={createPageUrl("InstallPrompt")}>Install the app</Link>
@@ -91,7 +87,7 @@ export default function AppFooter() {
       </div>
 
       <div className="pr-container pr-footer-bottom">
-        <p>© {new Date().getFullYear()} Pray-Read Bible. Scripture in the public domain.</p>
+        <p>© {new Date().getFullYear()} Pray Read. Scripture in the public domain.</p>
         <p>Built for churches, small groups and families.</p>
       </div>
     </footer>

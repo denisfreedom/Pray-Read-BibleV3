@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { fse2 } from "@/api/fse2Client";
 import { getAdminToken } from "@/lib/adminSession";
-import { DownloadIcon, LanguagesIcon, Loader2Icon } from "lucide-react";
+import {
+  CheckIcon,
+  DownloadIcon,
+  LanguagesIcon,
+  Loader2Icon,
+  RefreshCwIcon,
+  WrenchIcon
+} from "lucide-react";
+import ChapterCoverage from "@/components/admin/ChapterCoverage";
 
 /**
  * Installs the Luganda Bible into the app.
@@ -9,6 +17,9 @@ import { DownloadIcon, LanguagesIcon, Loader2Icon } from "lucide-react";
  * The installer takes every chapter from the public Luganda Bible and keeps
  * it in the app, so a reader can open any chapter in Luganda without waiting
  * for a live request, and without needing a signed-in session.
+ *
+ * The panel shows the audit of the install: how many of the 1,189 chapters
+ * of the Bible are in the app, and which ones are still missing.
  */
 export default function LugandaInstaller() {
   const [status, setStatus] = useState(null);
@@ -26,6 +37,9 @@ export default function LugandaInstaller() {
     if (!data || data.error) {
       throw new Error((data && data.error) || "The installer could not answer.");
     }
+    if (data.status === 401 || data.installed === undefined) {
+      throw new Error("Your admin session expired. Sign in again.");
+    }
     return data;
   }, []);
 
@@ -33,6 +47,8 @@ export default function LugandaInstaller() {
     try {
       const data = await call("status");
       setStatus(data);
+      setNote("");
+      setTone("success");
     } catch (error) {
       setTone("error");
       setNote(error.message || "Could not read the install status.");
@@ -46,28 +62,46 @@ export default function LugandaInstaller() {
   const install = async (whole) => {
     setBusy(true);
     setNote("");
+    setTone("success");
     try {
-      let data = null;
-      let start = 0;
-      for (let round = 0; round < 90; round += 1) {
-        data = whole
-          ? await call("install", { limit: 40, start, refresh: true })
-          : await call("install", { limit: 20 });
-        setStatus({ installed: data.stored, total: data.total });
+      if (!whole) {
+        const data = await call("install", { limit: 20 });
+        setStatus(data);
         if (data.errors && data.errors.length) {
           setTone("error");
           setNote(
             `${data.errors.length} chapters could not be read yet: ${data.errors.slice(0, 3).join(" · ")}`
           );
+        } else {
+          setNote(`${data.added} chapters were added. ${data.missing} chapters are still missing.`);
         }
-        if (!whole) break;
-        start = Number(data.next || start + 20);
-        if (start >= Number(data.total || 0)) break;
+        return;
       }
-      if (whole && data && start >= Number(data.total || 0)) {
-        setTone("success");
-        setNote("The Luganda Bible is installed. Every chapter can now be read in Luganda.");
+
+      let data = null;
+      for (let round = 0; round < 60; round += 1) {
+        data = await call("install", { limit: 60 });
+        setStatus(data);
+        if (data.done) {
+          setTone("success");
+          setNote(
+            `The Luganda Bible is installed: all ${data.total} chapters are in the app and can be read in Luganda.`
+          );
+          return;
+        }
+        if (!data.added) {
+          setTone("error");
+          setNote(
+            `The installer stopped. ${data.missing} chapters are still missing${
+              data.errors && data.errors.length ? `: ${data.errors.slice(0, 3).join(" · ")}` : "."
+            }`
+          );
+          return;
+        }
+        setNote(`Installing… ${data.ready} of ${data.total} chapters are ready.`);
       }
+      setTone("error");
+      setNote("The installer is still running. Press the button again to carry on where it stopped.");
     } catch (error) {
       setTone("error");
       setNote(error.message || "The installer stopped.");
@@ -76,9 +110,32 @@ export default function LugandaInstaller() {
     }
   };
 
+  const repair = async () => {
+    setBusy(true);
+    setNote("");
+    setTone("success");
+    try {
+      const data = await call("repair", { limit: 60 });
+      setStatus(data);
+      if (data.repaired) {
+        setNote(`${data.repaired} chapters were downloaded again. ${data.missing} chapters are still missing.`);
+      } else {
+        setNote("There was nothing to repair.");
+      }
+    } catch (error) {
+      setTone("error");
+      setNote(error.message || "The repair stopped.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const installed = Number(status?.installed || 0);
+  const ready = Number(status?.ready || 0);
+  const missing = Number(status?.missing || 0);
+  const broken = Number(status?.broken || 0);
   const total = Number(status?.total || 0);
-  const percent = total ? Math.min(100, Math.round((installed / total) * 100)) : 0;
+  const percent = total ? Math.min(100, Math.round((ready / total) * 100)) : 0;
 
   return (
     <div className="pr-grid pr-grid-2">
@@ -98,30 +155,42 @@ export default function LugandaInstaller() {
           />
         </div>
         <p style={{ margin: "8px 0 0", fontSize: "0.82rem", color: "var(--pr-body)" }}>
-          {installed} of {total} chapters installed ({percent}%)
+          {ready} of {total} chapters are ready ({percent}%)
+          {missing ? ` · ${missing} still missing` : ""}
+          {broken ? ` · ${broken} to repair` : ""}
         </p>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
           <button
             type="button"
             className="pr-btn pr-btn-primary pr-btn-sm"
-            onClick={() => install(false)}
+            onClick={() => install(true)}
             disabled={busy}
           >
             {busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
-            Install the next 20 chapters
+            Install every missing chapter
           </button>
           <button
             type="button"
             className="pr-btn pr-btn-outline pr-btn-sm"
-            onClick={() => install(true)}
+            onClick={() => install(false)}
             disabled={busy}
           >
-            {busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : null}
-            Install the whole Bible
+            {busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
+            Install the next 20
+          </button>
+          <button
+            type="button"
+            className="pr-btn pr-btn-outline pr-btn-sm"
+            onClick={repair}
+            disabled={busy}
+          >
+            {busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <WrenchIcon className="h-4 w-4" />}
+            Repair the chapters
           </button>
           <button type="button" className="pr-btn pr-btn-outline pr-btn-sm" onClick={loadStatus} disabled={busy}>
-            Refresh
+            {busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
+            Verify
           </button>
         </div>
 
@@ -129,6 +198,10 @@ export default function LugandaInstaller() {
           <div className={tone === "error" ? "pr-error" : "pr-success"} style={{ marginTop: 14 }}>
             {note}
           </div>
+        ) : null}
+
+        {status && status.books ? (
+          <ChapterCoverage books={status.books} missing={missing} broken={broken} />
         ) : null}
       </div>
 
@@ -154,7 +227,18 @@ export default function LugandaInstaller() {
             <strong>The live public source stays the safety net</strong> for a chapter that has not been
             installed yet.
           </li>
+          <li>
+            <strong>The install can be left to the background</strong>: the automation of the app keeps
+            filling the missing chapters, and the button above picks up where it stopped.
+          </li>
         </ul>
+        <p className="pr-success" style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <CheckIcon className="h-4 w-4" style={{ flex: "0 0 auto", marginTop: 2 }} />
+          <span>
+            Every chapter is checked against the 1,189 chapters of the Bible, so a chapter that failed to
+            download is never counted as installed.
+          </span>
+        </p>
       </div>
     </div>
   );

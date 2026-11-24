@@ -11,19 +11,19 @@
   "categories": ["books", "education", "lifestyle"],
   "icons": [
     {
-      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/generated_0f91fdf8.png",
+      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/media-library/4345fa1c4c79_icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/generated_c990bd6c.png",
+      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/media-library/4345fa1c4c79_icon-512x512.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/generated_aa744f7a.png",
+      "src": "/api/appfiles/public/app_73e21b4aa5684452/assets/media-library/4345fa1c4c79_icon-512x512.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { fse2 } from "@/api/fse2Client";
 import { Loader2Icon, ArrowRightIcon, LogInIcon } from "lucide-react";
+import { LOGO_URL } from "@/lib/theme";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -29,9 +30,17 @@ export default function Login() {
     <div style={{ minHeight: "70vh", display: "flex", alignItems: "center", padding: "40px 20px" }}>
       <div className="pr-container" style={{ maxWidth: 460 }}>
         <div className="pr-card pr-card-pad">
+          <img
+            src={LOGO_URL}
+            alt="Pray Read Bible"
+            className="pr-login-logo"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+          />
           <span className="pr-eyebrow">Welcome back</span>
           <h1 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.5rem", fontWeight: 800 }}>
-            Sign in to Pray-Read
+            Sign in
           </h1>
           <p style={{ margin: "8px 0 0", fontSize: "0.9rem" }}>
             Your chapters, highlights, notes and prayers follow you across devices.

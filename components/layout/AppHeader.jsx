@@ -56,7 +56,7 @@ export default function AppHeader({ currentPageName }) {
   return (
     <header className="pr-header">
       <div className="pr-container pr-header-inner">
-        <Link to={createPageUrl("Home")} className="pr-brand" aria-label="Pray-Read Bible home">
+        <Link to={createPageUrl("Home")} className="pr-brand" aria-label="Pray Read home">
           <span className="pr-brand-tile">
             {logoFailed ? (
               <span className="pr-serif" style={{ color: "var(--pr-emerald)", fontWeight: 700 }}>
@@ -65,15 +65,11 @@ export default function AppHeader({ currentPageName }) {
             ) : (
               <img
                 src={LOGO_URL}
-                alt="Pray-Read Bible"
+                alt="Pray Read Bible"
                 className="pr-brand-logo"
                 onError={() => setLogoFailed(true)}
               />
             )}
-          </span>
-          <span className="pr-wordmark">
-            <span className="pr-wordmark-dark">Pray-Read</span>{" "}
-            <span className="pr-wordmark-gold">Bible</span>
           </span>
         </Link>
 

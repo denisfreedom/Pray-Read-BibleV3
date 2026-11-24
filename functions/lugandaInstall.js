@@ -6,7 +6,11 @@
 // without needing a signed-in session.
 //
 // The function is protected by the signed admin session token issued by
-// functions/adminAuth.js.
+// functions/adminAuth.js. The background automation of the app may also
+// call it with the install key that is kept in the environment.
+//
+// Every call works from the list of chapters that are really in the app, so
+// a chapter that failed to download is simply tried again on the next call.
 
 const encoder = new TextEncoder();
 
@@ -41,6 +45,30 @@ const verifyToken = async (token) => {
     return data;
   }
   return null;
+};
+
+// The background worker carries this key, so the automation of the app can
+// install without a signed-in administrator.
+const installKey = () => {
+  try {
+    if (typeof process !== "undefined" && process.env) {
+      const value = process.env.SCRIPTURE_INSTALL_KEY;
+      if (value) return String(value);
+    }
+  } catch {
+    // The environment is not always there.
+  }
+  try {
+    return String(Deno.env.get("SCRIPTURE_INSTALL_KEY") || "");
+  } catch {
+    return "";
+  }
+};
+
+const authorised = async (body) => {
+  if (await verifyToken(body.token)) return true;
+  const key = installKey();
+  return Boolean(key) && key === String(body.install_key || "");
 };
 
 // The 66 books of the Bible with the number of chapters each one holds.
@@ -132,7 +160,8 @@ const parseLuganda = (html) => {
   }
   const verses = [];
   found.forEach((entry, index) => {
-    const stop = index + 1 < found.length ? found[index + 1].to : source.length;
+    const next = found.slice(index + 1);
+    const stop = next.length ? next[0].to : source.length;
     const text = decodeEntities(cleanText(source.slice(entry.from, stop)));
     if (!Number.isFinite(entry.number) || !text) return;
     verses.push({ verse: entry.number, text });
@@ -156,10 +185,34 @@ const fetchChapterText = async (bookNumber, chapter) => {
   return verses;
 };
 
+/**
+ * Reads every installed chapter.
+ * The chapters are read in the order they were created, so a chapter that is
+ * added while the installer works never pushes another one out of sight.
+ */
 const readInstalled = async () => {
-  const rows = await fse2.entities.LugandaChapter.list("-updated_date", 2000).catch(() => []);
-  return (rows || []).filter((row) => row && row.book_number && row.chapter);
+  const rows = [];
+  const pageSize = 500;
+  let offset = 0;
+  for (let page = 0; page < 30; page += 1) {
+    let batch = [];
+    try {
+      batch = await fse2.entities.LugandaChapter.list("created_date", pageSize, offset);
+    } catch {
+      batch = await fse2.entities.LugandaChapter.list("-updated_date", pageSize, offset).catch(() => []);
+    }
+    if (!batch || !batch.length) break;
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += batch.length;
+  }
+  return rows.filter((row) => row && row.book_number && row.chapter);
 };
+
+const countLines = (raw) =>
+  String(raw || "")
+    .split("\n")
+    .filter((line) => line.indexOf("\t") > 0).length;
 
 const saveChapter = async (chapter, verses) => {
   const values = {
@@ -183,65 +236,175 @@ const saveChapter = async (chapter, verses) => {
   return "created";
 };
 
+/**
+ * Compares the chapters in the app with the 1,189 chapters of the Bible.
+ * Every chapter that is not there is reported, and every chapter that is
+ * there but cannot be read is reported as broken.
+ */
+const audit = (rows) => {
+  const stored = new Map();
+  const duplicates = [];
+  for (const row of rows) {
+    const key = `${row.book_number}:${row.chapter}`;
+    if (stored.has(key)) duplicates.push(key);
+    else stored.set(key, row);
+  }
+  const books = [];
+  let missing = 0;
+  let broken = 0;
+  let installed = 0;
+  for (const [number, name, count] of BOOKS) {
+    const missingChapters = [];
+    const brokenChapters = [];
+    let ready = 0;
+    for (let chapter = 1; chapter <= count; chapter += 1) {
+      const row = stored.get(`${number}:${chapter}`);
+      if (!row) {
+        missingChapters.push(chapter);
+        continue;
+      }
+      installed += 1;
+      const lines = countLines(row.verses);
+      const sound = lines > 0 && (!row.verse_count || Number(row.verse_count) === lines);
+      if (sound) ready += 1;
+      else brokenChapters.push(chapter);
+    }
+    missing += missingChapters.length;
+    broken += brokenChapters.length;
+    books.push({
+      number,
+      name,
+      chapters: count,
+      ready,
+      missing: missingChapters,
+      broken: brokenChapters
+    });
+  }
+  return {
+    total: CHAPTERS.length,
+    installed,
+    ready: installed - broken,
+    missing,
+    broken,
+    duplicates,
+    books
+  };
+};
+
+/** Runs a few jobs at the same time, so a whole Bible does not take hours. */
+const runWithConcurrency = async (items, limit, worker) => {
+  const results = [];
+  let index = 0;
+  const runners = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (index < items.length) {
+      const current = index;
+      index += 1;
+      results[current] = await worker(items[current]);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+};
+
+/** Downloads one chapter and keeps it in the app, trying it twice. */
+const installChapter = async (entry) => {
+  let lastError = "";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const verses = await fetchChapterText(entry.book_number, entry.chapter);
+      await saveChapter(entry, verses);
+      return null;
+    } catch (error) {
+      lastError = error.message || String(error);
+      await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+    }
+  }
+  return `${entry.book} ${entry.chapter}: ${lastError}`;
+};
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const session = await verifyToken(body.token);
-    if (!session) {
+    if (!(await authorised(body))) {
       return Response.json({ error: "Your admin session expired. Sign in again." }, { status: 401 });
     }
 
     const action = String(body.action || "status");
 
-    if (action === "status") {
-      const installed = await readInstalled();
+    // The audit: what is in the app and what is still missing.
+    if (action === "status" || action === "verify") {
+      const report = audit(await readInstalled());
       return Response.json({
-        installed: installed.length,
-        total: CHAPTERS.length,
-        books: BOOKS.length
+        installed: report.installed,
+        ready: report.ready,
+        missing: report.missing,
+        broken: report.broken,
+        stored: report.installed,
+        total: report.total,
+        books: report.books,
+        duplicates: report.duplicates.length
       });
     }
 
     if (action === "install") {
-      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 40);
-      const start = Math.max(Number(body.start) || 0, 0);
-      const refresh = Boolean(body.refresh);
-      const installedRows = refresh ? [] : await readInstalled();
-      const installedKeys = new Set(installedRows.map((row) => `${row.book_number}:${row.chapter}`));
-
-      let queue;
+      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 80);
+      const rows = await readInstalled();
+      const present = new Set(rows.map((row) => `${row.book_number}:${row.chapter}`));
+      let queue = CHAPTERS.filter((entry) => !present.has(`${entry.book_number}:${entry.chapter}`));
       if (body.book_number) {
-        const wanted = Number(body.book_number);
-        const chapter = body.chapter ? Number(body.chapter) : null;
-        queue = CHAPTERS.filter(
-          (entry) => entry.book_number === wanted && (!chapter || entry.chapter === chapter)
-        );
-      } else if (refresh) {
-        queue = CHAPTERS.slice(start, start + limit);
-      } else {
-        queue = CHAPTERS.filter((entry) => !installedKeys.has(`${entry.book_number}:${entry.chapter}`)).slice(0, limit);
+        queue = queue.filter((entry) => entry.book_number === Number(body.book_number));
       }
-
-      const errors = [];
-      let installed = 0;
-      for (const entry of queue) {
-        try {
-          const verses = await fetchChapterText(entry.book_number, entry.chapter);
-          await saveChapter(entry, verses);
-          installed += 1;
-        } catch (error) {
-          errors.push(`${entry.book} ${entry.chapter}: ${error.message}`);
-        }
+      if (body.chapter) {
+        queue = queue.filter((entry) => entry.chapter === Number(body.chapter));
       }
+      queue = queue.slice(0, limit);
 
-      const after = await readInstalled();
+      const messages = await runWithConcurrency(queue, 4, installChapter);
+      const errors = messages.filter((message) => message);
+      const added = messages.length - errors.length;
+
+      const report = audit(await readInstalled());
       return Response.json({
-        installed,
+        added,
         errors,
-        stored: after.length,
-        total: CHAPTERS.length,
-        next: start + queue.length,
-        done: after.length >= CHAPTERS.length
+        installed: report.installed,
+        ready: report.ready,
+        missing: report.missing,
+        broken: report.broken,
+        stored: report.installed,
+        total: report.total,
+        books: report.books,
+        done: report.missing === 0 && report.broken === 0
+      });
+    }
+
+    // Downloads again the chapters that are in the app but cannot be read.
+    if (action === "repair") {
+      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 80);
+      const report = audit(await readInstalled());
+      const queue = report.books.flatMap((book) =>
+        book.broken.map((chapter) => ({
+          book_number: book.number,
+          book: book.name,
+          chapter
+        }))
+      );
+      const targets = queue.slice(0, limit);
+      const messages = await runWithConcurrency(targets, 4, installChapter);
+      const errors = messages.filter((message) => message);
+      const repaired = messages.length - errors.length;
+      const after = audit(await readInstalled());
+      return Response.json({
+        repaired,
+        errors,
+        installed: after.installed,
+        ready: after.ready,
+        missing: after.missing,
+        broken: after.broken,
+        stored: after.installed,
+        total: after.total,
+        books: after.books,
+        done: after.missing === 0 && after.broken === 0
       });
     }
 
