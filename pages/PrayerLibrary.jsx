@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { PRAYERS } from "@/lib/seedContent";
+import { chapterLink, splitRefs } from "@/lib/scriptureRefs";
 import ShareRow from "@/components/common/ShareRow";
 import { HandHeartIcon, SearchIcon, BookmarkIcon, BookmarkCheckIcon, Share2Icon } from "lucide-react";
 
@@ -169,17 +170,25 @@ export default function PrayerLibrary() {
         ) : (
           <div className="pr-grid pr-grid-2">
             {filtered.map((prayer) => (
-              <div key={prayer.title} className="pr-card pr-card-pad">
+              <div key={`${prayer.id || "seed"}-${prayer.title}`} className="pr-card pr-card-pad">
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <span className="pr-badge pr-badge-outline">{prayer.category}</span>
+                  {prayer.category ? (
+                    <span className="pr-badge pr-badge-outline">{prayer.category}</span>
+                  ) : null}
                   {prayer.scripture_ref ? (
-                    <Link
-                      to={createPageUrl("Chapter") + "?book=19&chapter=23"}
-                      className="pr-link"
-                      style={{ fontSize: "0.8rem" }}
-                    >
-                      {prayer.scripture_ref}
-                    </Link>
+                    chapterLink(prayer.scripture_ref) ? (
+                      <Link
+                        to={chapterLink(prayer.scripture_ref)}
+                        className="pr-link"
+                        style={{ fontSize: "0.8rem" }}
+                      >
+                        {prayer.scripture_ref}
+                      </Link>
+                    ) : (
+                      <span className="pr-badge pr-badge-gold" style={{ fontSize: "0.8rem" }}>
+                        {prayer.scripture_ref}
+                      </span>
+                    )
                   ) : null}
                 </div>
 
@@ -193,6 +202,41 @@ export default function PrayerLibrary() {
                 >
                   {language === "en" ? prayer.body_en || prayer.body : prayer.body_lu}
                 </p>
+
+                {splitRefs(prayer.cross_refs).length ? (
+                  <div style={{ marginTop: 14 }}>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: "0.72rem",
+                        fontWeight: 800,
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        color: "var(--pr-gold-deep)"
+                      }}
+                    >
+                      Cross references
+                    </p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                      {splitRefs(prayer.cross_refs).map((ref) =>
+                        chapterLink(ref) ? (
+                          <Link
+                            key={ref}
+                            to={chapterLink(ref)}
+                            className="pr-chip"
+                            style={{ textDecoration: "none" }}
+                          >
+                            {ref}
+                          </Link>
+                        ) : (
+                          <span key={ref} className="pr-chip">
+                            {ref}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16, alignItems: "center" }}>
                   <button

@@ -14,6 +14,18 @@
 
 const encoder = new TextEncoder();
 
+// A session that has just run out is still accepted for a while, so a long
+// installation is never cut off in the middle by the clock.
+const RENEW_GRACE_MS = 1000 * 60 * 60 * 24 * 14;
+
+// Base64 without Buffer, so the session token is read the same way wherever
+// the function runs.
+const decodeBase64 = (value) => {
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+};
+
 const toHex = (buffer) =>
   Array.from(new Uint8Array(buffer))
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -34,13 +46,15 @@ const sign = async (payload, secret) => {
 const verifyToken = async (token) => {
   if (!token || typeof token !== "string" || !token.includes(".")) return null;
   const [payload, signature] = token.split(".");
-  const rows = await fse2.entities.AdminAccount.list("-updated_date", 50);
+  const rows = await fse2.entities.AdminAccount.list("-updated_date", 200);
   for (const account of rows || []) {
     if (!account.secret) continue;
     const expected = await sign(payload, account.secret);
     if (expected !== signature) continue;
-    const data = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
-    if (data.exp < Date.now()) continue;
+    const data = JSON.parse(decodeBase64(payload));
+    // A session that has just run out is still accepted for a while, so a
+    // long installation is never cut off in the middle.
+    if (data.exp + RENEW_GRACE_MS < Date.now()) continue;
     if (String(data.sv) !== String(account.session_version || "1")) continue;
     return data;
   }

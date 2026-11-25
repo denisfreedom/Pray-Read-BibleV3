@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { INSIGHTS, PRAYERS } from "@/lib/seedContent";
@@ -11,7 +11,8 @@ import {
 import { parseReference } from "@/lib/scriptureRefs";
 import { selectionInside } from "@/lib/textSelection";
 import AnnotatedText from "@/components/read/AnnotatedText";
-import { BookOpenIcon, HeartHandshakeIcon, MessageCircleIcon, Icon } from "lucide-react";
+import { BookOpenIcon, HeartHandshakeIcon, Link2Icon, MessageCircleIcon, Icon } from "lucide-react";
+import { getBookByNumber } from "@/lib/bibleBooks";
 
 const EMPTY = [];
 
@@ -21,7 +22,8 @@ const EMPTY = [];
 const SECTIONS = [
   { key: "intro", label: "Intro", Icon: BookOpenIcon },
   { key: "commentary", label: "Commentary", Icon: MessageCircleIcon },
-  { key: "prayer", label: "Prayer", Icon: HeartHandshakeIcon }
+  { key: "prayer", label: "Prayer", Icon: HeartHandshakeIcon },
+  { key: "crossrefs", label: "Cross-refs", Icon: Link2Icon }
 ];
 
 // The panel carries the short form of the closing prayer. The full prayer
@@ -49,13 +51,17 @@ export default function ChapterSidebar({
   verses = EMPTY,
   language = "en",
   annotations = EMPTY,
+  passages = EMPTY,
+  crossRefGroups = EMPTY,
   onAnnotate,
   onRemove,
   onOpenPassage,
+  onOpenCrossRef,
   panelOpen = false,
   activeSection = "intro",
   onSectionChange
 }) {
+  const [openPrayer, setOpenPrayer] = useState("");
   const bookNumber = book ? book.number : 0;
 
   const { data: commentaryRows = EMPTY } = useQuery({
@@ -237,6 +243,74 @@ export default function ChapterSidebar({
             </div>
           </header>
           <div className="pr-chapter-scroll">
+            {passages.map((passage, index) => {
+              const key = `imported-prayer-${index}`;
+              const english = passage.prayer_en || "";
+              const luganda = passage.prayer_lu || "";
+              const title = language === "lu"
+                ? passage.title_lu || passage.title_en
+                : passage.title_en || passage.title_lu;
+              if (!title && !english && !luganda) return null;
+              const text = language === "lu" ? luganda || english : english || luganda;
+              const luText = language === "both" && luganda ? shorten(luganda) : "";
+              const open = openPrayer === key;
+              return (
+                <article key={key} className="pr-chapter-prayer">
+                  <button
+                    type="button"
+                    className="pr-chapter-prayer-title"
+                    onClick={() => setOpenPrayer(open ? "" : key)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      textAlign: "start",
+                      cursor: "pointer",
+                      font: "inherit",
+                      color: "inherit"
+                    }}
+                  >
+                    {title}
+                    <span style={{ display: "block", fontSize: "0.72rem", fontWeight: 400, color: "var(--pr-body)" }}>
+                      {passage.verse ? `Verse ${passage.verse}` : "The whole chapter"}
+                    </span>
+                  </button>
+                  {open ? (
+                    <>
+                      <AnnotatedText
+                        blockId={`${prayerBlock}-imported-${index}`}
+                        section="chapter-prayer"
+                        text={shorten(text)}
+                        annotations={forBlock(`${prayerBlock}-imported-${index}`)}
+                        onAnnotate={onAnnotate}
+                        onRemove={onRemove}
+                        className="pr-chapter-prayer-body"
+                      />
+                      {luText ? (
+                        <AnnotatedText
+                          blockId={`${prayerBlock}-imported-${index}-lu`}
+                          section="chapter-prayer"
+                          text={luText}
+                          annotations={forBlock(`${prayerBlock}-imported-${index}-lu`)}
+                          onAnnotate={onAnnotate}
+                          onRemove={onRemove}
+                          className="pr-chapter-prayer-body is-lu"
+                        />
+                      ) : null}
+                      {passage.scripture_ref ? (
+                        <button
+                          type="button"
+                          className="pr-chapter-ref"
+                          onClick={(event) => openReference(passage.scripture_ref, event)}
+                        >
+                          {passage.scripture_ref}
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </article>
+              );
+            })}
             {prayers.map((prayer, index) => {
               const english = prayer.body || "";
               const luganda = prayer.bodyLu || "";
@@ -294,6 +368,64 @@ export default function ChapterSidebar({
             <p className="pr-chapter-hint">
               Select any text to highlight or underline it. Tap the reference to read the verse here.
             </p>
+          </div>
+        </section>
+      ) : null}
+
+      {activeSection === "crossrefs" ? (
+        <section className="pr-chapter-card" id="chapter-crossrefs-panel">
+          <header className="pr-chapter-card-head">
+            <Link2Icon className="h-4 w-4" aria-hidden="true" />
+            <div>
+              <p className="pr-chapter-card-title">Cross-references</p>
+              <p className="pr-chapter-card-sub">
+                {crossRefGroups.length} group{crossRefGroups.length === 1 ? "" : "s"} in {book.name} {chapter}
+              </p>
+            </div>
+          </header>
+          <div className="pr-chapter-scroll">
+            {crossRefGroups.length === 0 ? (
+              <p className="pr-chapter-hint" style={{ marginTop: 0 }}>
+                No cross-reference has been written for {book.name} {chapter} yet.
+              </p>
+            ) : null}
+            {crossRefGroups.map((group) => (
+              <article key={`crossrefs-${group.verse}`} className="pr-chapter-note">
+                <p className="pr-chapter-note-title">
+                  {group.verse ? `Verse ${group.verse}` : "In this chapter"} → {group.rows.length} cross-reference
+                  {group.rows.length === 1 ? "" : "s"}
+                </p>
+                {group.rows.map((row, index) => {
+                  const target = getBookByNumber(row.ref_book_number);
+                  const name = target ? target.name : `Book ${row.ref_book_number}`;
+                  const text =
+                    language === "lu" ? row.ref_text_lu || row.ref_text_en : row.ref_text_en || row.ref_text_lu;
+                  const note = language === "lu" ? row.note_lu || row.note_en : row.note_en || row.note_lu;
+                  return (
+                    <div key={row.id || index} style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="pr-chapter-ref"
+                        onClick={() => onOpenCrossRef && onOpenCrossRef(row)}
+                      >
+                        {name} {row.ref_chapter}:{row.ref_verse}
+                      </button>
+                      {text ? (
+                        <p className="pr-chapter-body" style={{ marginTop: 6 }}>
+                          {text}
+                        </p>
+                      ) : null}
+                      {note ? (
+                        <p className="pr-chapter-hint" style={{ marginTop: 4 }}>
+                          {note}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </article>
+            ))}
+            <p className="pr-chapter-hint">Tap a reference to open that verse in the reader.</p>
           </div>
         </section>
       ) : null}

@@ -180,13 +180,76 @@ const loadBibleApi = async (book, chapter, translation) => {
   return verses;
 };
 
-const loadWordplanet = async (language, bookNumber, chapter) => {
-  const response = await fetchWithTimeout(wordplanetUrl(language, bookNumber, chapter), {
-    headers: { "User-Agent": "PrayReadBible/1.0" }
+/**
+ * The plain text of a Word Planet chapter, when it is read through a relay
+ * that hands the page over as plain text. Every verse begins with its
+ * number, so the verses are picked out one after the other.
+ */
+const parseWordplanetText = (text) => {
+  const body = String(text || "").split("Markdown Content:").pop() || "";
+  const verses = [];
+  body.split("\n").forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    const match = line.match(/^\*?\s*(\d{1,3})[.:]?\s+(.*)$/);
+    // Only the verse that comes next in the chapter is taken, so the
+    // navigation of the page can never be read as a verse.
+    if (match && Number(match[1]) === verses.length + 1) {
+      const body2 = cleanText(match[2]);
+      if (body2) verses.push({ verse: verses.length + 1, text: body2 });
+      return;
+    }
+    if (verses.length) {
+      const last = verses[verses.length - 1];
+      last.text = cleanText(`${last.text} ${line}`);
+    }
   });
-  const html = await response.text();
-  const verses = parseWordplanet(html);
-  if (!response.ok || !verses.length) throw new Error("The Bible source did not answer.");
+  return verses;
+};
+
+/** The first answer that holds a whole chapter wins. */
+const firstChapter = async (primary, fallback) => {
+  const tagged = (promise, tag) =>
+    promise.then((value) => ({ tag, value }), () => ({ tag, value: null }));
+  const winner = await Promise.race([tagged(primary, "primary"), tagged(fallback, "fallback")]);
+  if (winner.tag === "primary") {
+    if (winner.value && winner.value.length) return winner.value;
+    const other = await tagged(fallback, "fallback");
+    return other.value && other.value.length ? other.value : null;
+  }
+  if (winner.value && winner.value.length) return winner.value;
+  const other = await tagged(primary, "primary");
+  return other.value && other.value.length ? other.value : null;
+};
+
+// Word Planet does not always let a browser read its pages straight away,
+// so the text is also asked for through a public relay. The relay only
+// ever carries the public domain text of the Bible.
+const loadWordplanet = async (language, bookNumber, chapter) => {
+  const url = wordplanetUrl(language, bookNumber, chapter);
+  const headers = { "User-Agent": "PrayReadBible/1.0" };
+  try {
+    const response = await fetchWithTimeout(url, { headers });
+    const html = await response.text();
+    const verses = parseWordplanet(html);
+    if (response.ok && verses.length) return verses;
+  } catch {
+    // The relay is asked below.
+  }
+  const asText = fetchWithTimeout(`https://r.jina.ai/${url}`, { headers }, 12000)
+    .then((response) => (response.ok ? response.text() : ""))
+    .then((text) => parseWordplanetText(text))
+    .catch(() => []);
+  const asHtml = fetchWithTimeout(
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    { headers },
+    12000
+  )
+    .then((response) => (response.ok ? response.text() : ""))
+    .then((html) => parseWordplanet(html))
+    .catch(() => []);
+  const verses = await firstChapter(asText, asHtml);
+  if (!verses || !verses.length) throw new Error("The Bible source did not answer.");
   return verses;
 };
 

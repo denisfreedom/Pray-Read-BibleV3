@@ -33,6 +33,7 @@ export default function PassagePrayer({
   language = "en",
   annotations = [],
   fallback = null,
+  passages = [],
   onAnnotate,
   onRemove,
   onOpenPassage,
@@ -58,9 +59,20 @@ export default function PassagePrayer({
     if (reference && onOpenPassage) onOpenPassage(reference);
   };
 
-  // The prayer of the library for this verse, or, when there is none, the
-  // prayer that closes the chapter.
+  // The prayer written for this verse comes first. When there is none, the
+  // prayer of the library for this verse is used, and when there is none of
+  // those either, the prayer that closes the chapter.
   const shown = useMemo(() => {
+    if ((passages || []).length) {
+      return passages.map((row) => ({
+        key: row.id || `${row.chapter}-${row.verse || 0}-${row.title_en}`,
+        title: row.title_en,
+        titleLu: row.title_lu,
+        bodyEn: row.prayer_en,
+        bodyLu: row.prayer_lu,
+        ref: row.scripture_ref
+      }));
+    }
     if (matches.length) {
       return matches.map((row) => ({
         key: row.id || row.title,
@@ -84,7 +96,7 @@ export default function PassagePrayer({
       ];
     }
     return [];
-  }, [matches, fallback]);
+  }, [matches, fallback, passages]);
 
   return (
     <div

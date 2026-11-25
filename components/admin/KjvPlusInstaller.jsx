@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { fse2 } from "@/api/fse2Client";
-import { getAdminToken } from "@/lib/adminSession";
+import { ensureFreshAdminToken, getAdminToken, renewAdminSession } from "@/lib/adminSession";
 import {
   BookOpenIcon,
   CheckIcon,
@@ -37,19 +37,48 @@ export default function KjvPlusInstaller() {
   const [wordTone, setWordTone] = useState("success");
 
   const call = useCallback(async (action, payload = {}) => {
-    const response = await fse2.functions.invoke("kjvInstall", {
-      action,
-      token: getAdminToken(),
-      ...payload
-    });
-    const data = response && response.data ? response.data : response;
-    if (!data || data.error) {
-      throw new Error((data && data.error) || "The installer could not answer.");
+    const send = async () => {
+      // The session is kept fresh before every round, so a long install is
+      // never cut off by the clock.
+      await ensureFreshAdminToken();
+      if (!getAdminToken()) {
+        throw new Error(
+          "The content manager session is not open, so the installer cannot reach the server. Sign in to the content manager to install by hand; the background automation keeps filling the library."
+        );
+      }
+      const response = await fse2.functions.invoke("kjvInstall", {
+        action,
+        token: getAdminToken(),
+        ...payload
+      });
+      const data = response && response.data ? response.data : response;
+      if (!data) {
+        throw new Error("The installer could not reach the server.");
+      }
+      if (data.error || data.detail) {
+        // The server answered with a reason: what really happened is shown,
+        // not guessed.
+        throw new Error(data.error || data.detail);
+      }
+      if (data.status === 401) {
+        throw new Error("Your admin session expired. Sign in again.");
+      }
+      if (data.installed === undefined) {
+        throw new Error(
+          "The installer could not reach the server. The background automation keeps filling the library."
+        );
+      }
+      return data;
+    };
+    try {
+      return await send();
+    } catch (error) {
+      // The session is renewed and the round is tried again, so the
+      // installation carries on instead of stopping.
+      if (!/session expired/i.test(error.message || "")) throw error;
+      if (!(await renewAdminSession())) throw error;
+      return send();
     }
-    if (data.status === 401 || data.installed === undefined) {
-      throw new Error("Your admin session expired. Sign in again.");
-    }
-    return data;
   }, []);
 
   const callWords = useCallback(async (action, payload = {}) => {

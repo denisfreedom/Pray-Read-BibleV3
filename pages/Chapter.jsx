@@ -25,7 +25,17 @@ import {
 import { PRAYERS } from "@/lib/seedContent";
 import { getChapterPrayer } from "@/lib/chapterStudy";
 import VerseActionBar from "@/components/read/VerseActionBar";
-import FloatingVerse from "@/components/read/FloatingVerse";
+import CrossRefList from "@/components/read/CrossRefList";
+import {
+  fetchChapterCrossRefs,
+  fetchChapterPassages,
+  groupCrossRefsByVerse,
+  normaliseCrossRef,
+  normalisePassage,
+  pickChapterPassage,
+  pickCrossRefsForVerse,
+  pickPassageForVerse
+} from "@/lib/prayerPassages";
 import PassageTabs from "@/components/read/PassageTabs";
 import PassagePrayer, { matchesPassage } from "@/components/read/PassagePrayer";
 import ChapterSidebar from "@/components/read/ChapterSidebar";
@@ -127,6 +137,7 @@ export default function Chapter() {
   const [readDate, setReadDate] = useState("");
   const [marks, setMarks] = useState([]);
   const [localMarks, setLocalMarks] = useState([]);
+  // The verse whose cross-references are open in the reader.
   const [crossRef, setCrossRef] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [showChapterGrid, setShowChapterGrid] = useState(false);
@@ -187,6 +198,17 @@ export default function Chapter() {
   const { data: prayerRows = [] } = useQuery({
     queryKey: ["prayers"],
     queryFn: () => fetchPublicCollection("prayers", { authenticated: false })
+  });
+  // The prayer passages and the cross-references that were imported for
+  // this chapter. They are read from the app and kept on the device, so the
+  // reader finds them in flight mode as well.
+  const { data: passageRows = [] } = useQuery({
+    queryKey: ["chapterPassages", book.number, chapter],
+    queryFn: () => fetchChapterPassages(book.number, chapter)
+  });
+  const { data: crossRefRows = [] } = useQuery({
+    queryKey: ["chapterCrossRefs", book.number, chapter],
+    queryFn: () => fetchChapterCrossRefs(book.number, chapter)
   });
 
   useEffect(() => {
@@ -460,6 +482,15 @@ export default function Chapter() {
     navigate(
       createPageUrl("Chapter") + `?book=${book.number}&chapter=${number}&lang=${language}&version=${versionId}`
     );
+  // Opens the verse a cross-reference points at.
+  const handleOpenCrossRef = useCallback((row) => {
+    if (!row) return;
+    navigate(
+      createPageUrl("Chapter") +
+        `?book=${row.ref_book_number}&chapter=${row.ref_chapter}&verse=${row.ref_verse}&lang=${language}&version=${versionId}`
+    );
+  }, [language, versionId, navigate]);
+
   const stepChapter = useCallback((delta) => {
     const target = chapter + delta;
     if (target < 1) return;
@@ -487,6 +518,45 @@ export default function Chapter() {
 
   const crossReferences = useMemo(() => getCrossReferences(book.number, chapter), [book.number, chapter]);
   const reference = `${book.name} ${chapter}`;
+
+  // The prayer passages that were imported for this chapter.
+  const chapterPassages = useMemo(
+    () => (passageRows || []).map((row) => normalisePassage(row)),
+    [passageRows]
+  );
+
+  // The cross-references of this chapter: the ones that were imported for
+  // it, and the ones the app already carried.
+  const allCrossRefs = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+    (crossRefRows || []).forEach((row) => {
+      const item = normaliseCrossRef(row);
+      const key = `${item.verse}:${item.ref_book_number}:${item.ref_chapter}:${item.ref_verse}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(item);
+    });
+    (crossReferences || []).forEach((row) => {
+      list.push({
+        id: `curated-${row.book}-${row.chapter}-${row.verse}`,
+        verse: 0,
+        ref_book_number: Number(row.book),
+        ref_chapter: Number(row.chapter),
+        ref_verse: Number(row.verse),
+        ref_text_en: String(row.text || ""),
+        ref_text_lu: "",
+        note_en: "",
+        note_lu: ""
+      });
+    });
+    return list;
+  }, [crossRefRows, crossReferences]);
+
+  const crossRefGroups = useMemo(() => groupCrossRefsByVerse(allCrossRefs), [allCrossRefs]);
+  const crossRefsForVerse = (verseNumber) => pickCrossRefsForVerse(allCrossRefs, verseNumber);
+  const passageForVerse = (verseNumber) => pickPassageForVerse(chapterPassages, verseNumber);
+  const chapterPassage = useMemo(() => pickChapterPassage(chapterPassages), [chapterPassages]);
   const audioUrl = `https://www.wordproaudio.org/bibles/app/audio/1/${book.number}/${chapter}.mp3`;
   const chapterTrack = useMemo(() => {
     const track = {
@@ -516,6 +586,17 @@ export default function Chapter() {
     [book.number, chapter, prayerRows]
   );
   const closingPrayer = useMemo(() => {
+    // The prayer that was imported for the whole chapter comes first, so
+    // the chapter is never closed with the general prayer.
+    if (chapterPassage) {
+      return {
+        title: chapterPassage.title_en || `Closing prayer for ${book.name} ${chapter}`,
+        titleLu: chapterPassage.title_lu || "",
+        body: chapterPassage.prayer_en || "",
+        bodyLu: chapterPassage.prayer_lu || "",
+        ref: chapterPassage.scripture_ref || `${book.name} ${chapter}`
+      };
+    }
     const prayer = chapterPrayers[0];
     if (prayer) return prayer;
     return {
@@ -525,13 +606,24 @@ export default function Chapter() {
       bodyLu: "",
       ref: `${book.name} ${chapter}:1`
     };
-  }, [chapterPrayers, book.name, chapter]);
+  }, [chapterPassage, chapterPrayers, book.name, chapter]);
 
   const prayerTextFor = (verseNumber) => {
+    // The prayer that was imported for the verse, in both languages.
+    const passage = passageForVerse(verseNumber);
+    if (passage) {
+      return {
+        en: [passage.title_en || "", passage.prayer_en || ""].filter(Boolean).join("\n"),
+        lu: [passage.title_lu || "", passage.prayer_lu || ""].filter(Boolean).join("\n")
+      };
+    }
     const source = (prayerRows || []).length ? prayerRows : PRAYERS;
     const match = source.find((row) => matchesPassage(row.scripture_ref, book.name, chapter, verseNumber));
-    if (!match) return "";
-    return [match.title, match.body_en || match.body_lu || "", match.scripture_ref].filter(Boolean).join("\n");
+    if (!match) return { en: "", lu: "" };
+    return {
+      en: [match.title, match.body_en || ""].filter(Boolean).join("\n"),
+      lu: [match.title_lu || match.title || "", match.body_lu || ""].filter(Boolean).join("\n")
+    };
   };
 
   const readChapters = useMemo(() => {
@@ -560,8 +652,21 @@ export default function Chapter() {
     if (english) sections.push({ label: `${reference} ${verseNumber} (English)`, text: english });
     if (luganda && luganda !== english) sections.push({ label: `${reference} ${verseNumber} (Luganda)`, text: luganda });
     const prayer = prayerTextFor(verseNumber);
-    if (prayer) sections.push({ label: "Prayer passage", text: prayer });
-    if (crossReferences.length) {
+    if (prayer.en) sections.push({ label: "Prayer passage (English)", text: prayer.en });
+    if (prayer.lu && prayer.lu !== prayer.en) {
+      sections.push({ label: "Prayer passage (Luganda)", text: prayer.lu });
+    }
+    const verseRefs = crossRefsForVerse(verseNumber);
+    if (verseRefs.length) {
+      const lines = verseRefs.map((row) => {
+        const target = getBookByNumber(row.ref_book_number);
+        const name = target ? target.name : "Passage";
+        const text = language === "lu" ? row.ref_text_lu || row.ref_text_en : row.ref_text_en || row.ref_text_lu;
+        const note = language === "lu" ? row.note_lu || row.note_en : row.note_en || row.note_lu;
+        return `${name} ${row.ref_chapter}:${row.ref_verse}${text ? ` - ${text}` : ""}${note ? ` (${note})` : ""}`;
+      });
+      sections.push({ label: "Cross-references", text: lines.join("\n") });
+    } else if (crossReferences.length) {
       const lines = crossReferences.map((row) => `${getBookByNumber(row.book)?.name || "Passage"} ${row.chapter}:${row.verse} - ${row.text}`);
       sections.push({ label: "Cross-references", text: lines.join("\n") });
     }
@@ -583,11 +688,18 @@ export default function Chapter() {
   };
 
   const handleSharePrayer = (prayer) => {
-    const body = String(prayer.body || "");
-    const excerpt = body.length > 500 ? `${body.slice(0, 497).trim()}…` : body;
-    setShareSections([
-      { label: `${prayer.title}${prayer.ref ? `  -  ${prayer.ref}` : ""}`, text: excerpt }
-    ]);
+    const clip = (value) => (value.length > 500 ? `${value.slice(0, 497).trim()}…` : value);
+    const english = String(prayer.body || "");
+    const luganda = String(prayer.bodyLu || "");
+    const sections = [];
+    if (english) {
+      sections.push({ label: `${prayer.title}${prayer.ref ? `  -  ${prayer.ref}` : ""}`, text: clip(english) });
+    }
+    if (luganda && luganda !== english) {
+      const title = prayer.titleLu || prayer.title;
+      sections.push({ label: `${title}${prayer.ref ? `  -  ${prayer.ref}` : ""}`, text: clip(luganda) });
+    }
+    setShareSections(sections);
     setShareVerse(1);
     setShareTitle("Share the closing prayer");
     setShareSubtitle("The prayer of this chapter, so someone else can pray it with you.");
@@ -843,11 +955,7 @@ export default function Chapter() {
                               onHighlight={toggleHighlight}
                               onBookmark={toggleBookmark}
                               onNote={(number, text) => saveMark("note", number, { note_text: text })}
-                              onCrossRef={() => {
-                                const first = crossReferences[0];
-                                if (!first) { setToast("No cross-references for this chapter yet"); window.setTimeout(() => setToast(""), 2000); return; }
-                                setCrossRef(first);
-                              }}
+                              onCrossRef={() => setCrossRef((current) => (current === verse.verse ? null : verse.verse))}
                               onPrayer={(number) => setPrayerVerse((current) => current === number ? null : number)}
                               onCommentary={handleCommentary}
                               onShare={handleShare}
@@ -903,6 +1011,7 @@ export default function Chapter() {
                               verse={verse.verse}
                               language={displayLanguage}
                               annotations={annotations}
+                              passages={passageForVerse(verse.verse) ? [passageForVerse(verse.verse)] : []}
                               fallback={chapterPrayers[0] || null}
                               onAnnotate={handleAnnotate}
                               onRemove={handleRemove}
@@ -954,9 +1063,12 @@ export default function Chapter() {
               verses={verses}
               language={langMode}
               annotations={annotations}
+              passages={chapterPassages}
+              crossRefGroups={crossRefGroups}
               onAnnotate={handleAnnotate}
               onRemove={handleRemove}
               onOpenPassage={handleOpenPassage}
+              onOpenCrossRef={handleOpenCrossRef}
               panelOpen={panelOpen}
               activeSection={studySection}
               onSectionChange={setStudySection}
@@ -995,11 +1107,12 @@ export default function Chapter() {
       </div>
 
       {crossRef ? (
-        <FloatingVerse
-          reference={`${getBookByNumber(crossRef.book)?.name || "Passage"} ${crossRef.chapter}:${crossRef.verse}`}
-          verseText={crossRef.text}
+        <CrossRefList
+          verse={crossRef}
+          language={displayLanguage}
+          references={crossRefsForVerse(crossRef)}
+          chapterGroups={crossRefGroups}
           onClose={() => setCrossRef(null)}
-          chapterUrl={`?book=${crossRef.book}&chapter=${crossRef.chapter}&verse=${crossRef.verse}&lang=${language}&version=${versionId}`}
         />
       ) : null}
 

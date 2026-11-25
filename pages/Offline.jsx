@@ -8,6 +8,7 @@ import { BIBLE_BOOKS } from "@/lib/bibleBooks";
 import { bytesToMb } from "@/lib/format";
 import { chapterIsReadable, fetchChapter } from "@/lib/bibleApi";
 import { getVersion, getVersionOrDefault } from "@/lib/versions";
+import { normaliseCrossRef, normalisePassage } from "@/lib/prayerPassages";
 import {
   countOfflineStrong,
   readOfflineStrongCodes,
@@ -24,6 +25,8 @@ const SECTIONS = [
   { id: "devotionals", label: "Devotionals", entity: "devotionals" },
   { id: "commentary", label: "Commentary", entity: "commentary" },
   { id: "prayers", label: "Prayers", entity: "prayers" },
+  { id: "prayerPassages", label: "Prayer passages", entity: "prayerPassages" },
+  { id: "crossReferences", label: "Cross-references", entity: "crossReferences" },
   { id: "qa", label: "Q&A", entity: "qa" },
   { id: "verseOfDay", label: "Verse of the day", entity: "verseOfDay" }
 ];
@@ -337,6 +340,36 @@ export default function Offline() {
         const rows = await fetchPublicCollection("prayers", { authenticated: true }).catch(() => []);
         for (const row of rows || []) {
           await offline.put("prayers", row.title, row);
+        }
+      }
+
+      // The prayer passages and the cross-references are kept chapter by
+      // chapter, the same way the reader asks for them.
+      if (selected.includes("prayerPassages")) {
+        setProgress({ label: "Prayer passages", done: 0, total: 1 });
+        const rows = await fse2.entities.PrayerPassage.list("-updated_date", 1000).catch(() => []);
+        const grouped = new Map();
+        (rows || []).forEach((row) => {
+          const key = `${row.book_number}:${row.chapter}`;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key).push(normalisePassage(row));
+        });
+        for (const [key, list] of grouped.entries()) {
+          await offline.put("prayerPassages", key, list);
+        }
+      }
+
+      if (selected.includes("crossReferences")) {
+        setProgress({ label: "Cross-references", done: 0, total: 1 });
+        const rows = await fse2.entities.CrossReference.list("-updated_date", 1000).catch(() => []);
+        const grouped = new Map();
+        (rows || []).forEach((row) => {
+          const key = `${row.book_number}:${row.chapter}`;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key).push(normaliseCrossRef(row));
+        });
+        for (const [key, list] of grouped.entries()) {
+          await offline.put("crossReferences", key, list);
         }
       }
 

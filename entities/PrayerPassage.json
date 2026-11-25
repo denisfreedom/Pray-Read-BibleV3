@@ -1,0 +1,24 @@
+{
+  "name": "PrayerPassage",
+  "description": "A prayer passage written for a chapter, for a range of verses or for a single verse, in English and Luganda. Imported book by book from the prayer passage JSON files.",
+  "fields": [
+    {"name": "book_number", "type": "number", "required": true, "label": "Book number (1..66)"},
+    {"name": "book_name", "type": "string", "label": "Book"},
+    {"name": "chapter", "type": "number", "required": true, "label": "Chapter"},
+    {"name": "verse", "type": "number", "label": "Verse (0 = the whole chapter)"},
+    {"name": "verse_end", "type": "number", "label": "Last verse of the passage (0 = none)"},
+    {"name": "title_en", "type": "string", "label": "Title (EN)"},
+    {"name": "title_lu", "type": "string", "label": "Title (LU)"},
+    {"name": "prayer_en", "type": "string", "required": true, "label": "Prayer (EN)"},
+    {"name": "prayer_lu", "type": "string", "label": "Prayer (LU)"},
+    {"name": "scripture_ref", "type": "string", "label": "Passage"},
+    {"name": "source", "type": "string", "label": "Source"}
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      {"actions": ["read"], "subject": {"roles": ["*"]}},
+      {"actions": ["create", "update", "delete"], "subject": {"roles": ["owner", "admin"]}}
+    ]
+  }
+}

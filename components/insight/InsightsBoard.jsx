@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { INSIGHTS } from "@/lib/seedContent";
+import { chapterLink } from "@/lib/scriptureRefs";
 import ShareRow from "@/components/common/ShareRow";
 import EmptyState from "@/components/common/EmptyState";
 import { STORAGE_KEYS } from "@/lib/theme";
@@ -158,9 +159,9 @@ export default function InsightsBoard({ kind }) {
 
                   {isOpen ? (
                     <div style={{ marginTop: 14 }}>
-                      {item.passage ? (
+                      {item.passage && chapterLink(item.passage) ? (
                         <Link
-                          to={createPageUrl("Chapter") + "?book=19&chapter=23"}
+                          to={chapterLink(item.passage)}
                           className="pr-link"
                           style={{ fontSize: "0.85rem" }}
                         >

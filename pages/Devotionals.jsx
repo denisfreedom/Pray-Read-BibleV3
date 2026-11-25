@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { DEVOTIONALS } from "@/lib/seedContent";
+import { chapterLink } from "@/lib/scriptureRefs";
 import { formatLugandaDevotional, formatEnglishDevotional } from "@/lib/luganda";
 import { devotionalShareText } from "@/lib/share";
 import { STORAGE_KEYS, DEFAULT_COVER } from "@/lib/theme";
@@ -380,12 +381,11 @@ export default function Devotionals() {
                 <CheckCircleIcon className="h-4 w-4" />
                 {done.includes(current.code) ? "Completed" : "Mark complete"}
               </button>
-              <Link
-                to={createPageUrl("Chapter") + "?book=19&chapter=23"}
-                className="pr-btn pr-btn-outline"
-              >
-                Read Psalm 23
-              </Link>
+              {chapterLink(current.scripture) ? (
+                <Link to={chapterLink(current.scripture)} className="pr-btn pr-btn-outline">
+                  Read {current.scripture}
+                </Link>
+              ) : null}
             </div>
           </div>
         ) : null}

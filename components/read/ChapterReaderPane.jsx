@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { BookOpenIcon, HeartHandshakeIcon, MenuIcon, MessageCircleIcon, Icon } from "lucide-react";
+import { BookOpenIcon, HeartHandshakeIcon, Link2Icon, MenuIcon, MessageCircleIcon, Icon } from "lucide-react";
 
-// The three study sections the reader can open from the menu.
+// The study sections the reader can open from the menu.
 const SECTIONS = [
   { key: "intro", label: "Intro", Icon: BookOpenIcon },
   { key: "commentary", label: "Commentary", Icon: MessageCircleIcon },
-  { key: "prayer", label: "Prayer", Icon: HeartHandshakeIcon }
+  { key: "prayer", label: "Prayer", Icon: HeartHandshakeIcon },
+  { key: "crossrefs", label: "Cross-refs", Icon: Link2Icon }
 ];
 
 /**
@@ -63,8 +64,8 @@ export default function ChapterReaderPane({
             className={`pr-chapter-menu-btn${panelTab === "study" ? " is-active" : ""}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            aria-label="Chapter study menu: intro, commentary and prayer"
-            title="Chapter intro, commentary and prayer"
+            aria-label="Chapter study menu: intro, commentary, prayer and cross-references"
+            title="Chapter intro, commentary, prayer and cross-references"
             onClick={() => setMenuOpen((value) => !value)}
           >
             <MenuIcon className="h-5 w-5" aria-hidden="true" />

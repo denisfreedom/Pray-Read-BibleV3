@@ -1,1 +1,21 @@
-{"name": "AdminAccount", "description": "Administrator sign-in credentials for the content manager.", "fields": [{"name": "email", "type": "string", "required": true, "label": "Admin email"}, {"name": "password_hash", "type": "string", "label": "Password hash"}, {"name": "salt", "type": "string", "label": "Salt"}, {"name": "updated_date", "type": "string", "label": "Updated"}], "x-fse2-access": {"version": 1, "rules": [{"actions": ["create", "read", "update", "delete"], "subject": {"roles": ["owner", "admin"]}}]}}
+{
+  "name": "AdminAccount",
+  "description": "Administrator sign-in credentials for the content manager.",
+  "fields": [
+    { "name": "email", "type": "string", "required": true, "label": "Admin email" },
+    { "name": "password_hash", "type": "string", "label": "Password hash" },
+    { "name": "salt", "type": "string", "label": "Salt" },
+    { "name": "secret", "type": "string", "label": "Session secret" },
+    { "name": "session_version", "type": "string", "label": "Session version" },
+    { "name": "updated_date", "type": "string", "label": "Updated" }
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      {
+        "actions": ["create", "read", "update", "delete"],
+        "subject": { "roles": ["owner", "admin"] }
+      }
+    ]
+  }
+}

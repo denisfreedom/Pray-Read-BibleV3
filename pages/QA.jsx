@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { QA_ENTRIES } from "@/lib/seedContent";
+import { chapterLink } from "@/lib/scriptureRefs";
 import EmptyState from "@/components/common/EmptyState";
 import { MessageCircleQuestionIcon, Loader2Icon, CheckCircleIcon, SendIcon } from "lucide-react";
 import { fse2 } from "@/api/fse2Client";
@@ -159,9 +160,9 @@ export default function QA() {
                   )}
 
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14, alignItems: "center" }}>
-                    {item.passage_ref ? (
+                    {item.passage_ref && chapterLink(item.passage_ref) ? (
                       <Link
-                        to={createPageUrl("Chapter") + "?book=19&chapter=23"}
+                        to={chapterLink(item.passage_ref)}
                         className="pr-link"
                         style={{ fontSize: "0.85rem" }}
                       >

@@ -59,7 +59,7 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
+      fetchWithTimeout(request, 10000)
         .then((response) => {
           const copy = response.clone();
           caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy)).catch(() => undefined);
@@ -75,7 +75,7 @@ self.addEventListener("fetch", (event) => {
   // the device is used when the connection is not.
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
-      fetch(request)
+      fetchWithTimeout(request, 10000)
         .then((response) => {
           if (response && response.status === 200 && response.type === "basic") {
             const copy = response.clone();

@@ -1,11 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { callAdmin, getAdminToken, setAdminToken } from "@/lib/adminSession";
+import {
+  adminRevokeSession,
+  adminSessionCheck,
+  adminSignOut,
+  callAdminData,
+  renewAdminSession,
+  startAdminKeepAlive
+} from "@/lib/adminSession";
 import { DEVOTIONALS, PRAYERS, VERSE_SONGS, QA_ENTRIES, INSIGHTS } from "@/lib/seedContent";
 import LugandaInstaller from "@/components/admin/LugandaInstaller";
 import KjvPlusInstaller from "@/components/admin/KjvPlusInstaller";
-import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon } from "lucide-react";
+import PrayersPanel from "@/components/admin/PrayersPanel";
+import JsonImportPanel from "@/components/admin/JsonImportPanel";
+import PrayerCrossRefImport from "@/components/admin/PrayerCrossRefImport";
+import CollectionsPanel from "@/components/admin/CollectionsPanel";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon, HeartHandshakeIcon, ListIcon } from "lucide-react";
 
 const SECTIONS = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboardIcon },
@@ -14,6 +26,9 @@ const SECTIONS = [
   { id: "kjvplus", label: "KJV+ with Strong's", icon: BookOpenIcon },
   { id: "devotionals", label: "Devotionals", icon: NotebookPenIcon },
   { id: "prayers", label: "Prayer Library", icon: HandHeartIcon },
+  { id: "passages", label: "Prayer Passages", icon: HeartHandshakeIcon },
+  { id: "import", label: "JSON Import", icon: UploadIcon },
+  { id: "collections", label: "All Content", icon: ListIcon },
   { id: "songs", label: "Verse-Songs", icon: MusicIcon },
   { id: "qa", label: "Q&A", icon: MessageCircleQuestionIcon },
   { id: "insights", label: "Insights", icon: LightbulbIcon },
@@ -42,7 +57,8 @@ const FIELDS = {
     ["category", "Category", "text"],
     ["body_en", "Prayer (EN)", "textarea"],
     ["body_lu", "Prayer (LU)", "textarea"],
-    ["scripture_ref", "Scripture", "text"]
+    ["scripture_ref", "Scripture", "text"],
+    ["cross_refs", "Cross references", "text"]
   ],
   VerseSongSeries: [
     ["name", "Series name", "text"],
@@ -114,17 +130,18 @@ export default function AdminDashboard() {
   const [message, setMessage] = useState("");
   const [importText, setImportText] = useState("");
   const [importKind, setImportKind] = useState("verses");
+  const [importTab, setImportTab] = useState("collections");
   const [importBook, setImportBook] = useState("");
   const [importResult, setImportResult] = useState(null);
   const [settings, setSettings] = useState({ ivory: "#faf8f2", emerald: "#1d4035", gold: "#e9c981" });
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [passwordNote, setPasswordNote] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const collectionFor = useMemo(
     () => ({
       books: "BibleVerse",
       devotionals: "Devotional",
-      prayers: "Prayer",
       songs: "VerseSongSeries",
       qa: "QAEntry",
       insights: "Insight"
@@ -132,33 +149,56 @@ export default function AdminDashboard() {
     []
   );
 
-  useEffect(() => {
-    const token = getAdminToken();
-    if (!token) {
-      navigate(createPageUrl("Admin"));
+  // A refused call must never look like a success. The reason the server
+  // gave is shown, and an expired session sends the admin back to the
+  // sign-in page instead of leaving them on an empty panel.
+  const handleError = async (err) => {
+    const text = (err && err.message) || "Something went wrong.";
+    setMessage(text);
+    if (!/session expired/i.test(text)) return;
+    // The session is not thrown away: it is renewed and the administrator
+    // stays signed in.
+    const renewed = await renewAdminSession();
+    if (renewed) {
+      setMessage("Your session was renewed automatically. Please run that action again.");
       return;
     }
-    callAdmin("session")
-      .then((data) => {
-        if (!data || !data.valid) {
-          setAdminToken("");
+    adminSignOut();
+    navigate(createPageUrl("Admin"));
+  };
+
+  // The session is checked in the browser as well as on the server, so the
+  // content manager opens even when the function gateway is closed.
+  useEffect(() => {
+    adminSessionCheck()
+      .then((state) => {
+        if (!state || !state.valid) {
+          adminSignOut();
           navigate(createPageUrl("Admin"));
           return;
         }
         setReady(true);
       })
       .catch(() => {
-        setAdminToken("");
+        adminSignOut();
         navigate(createPageUrl("Admin"));
       });
   }, [navigate]);
 
+  // The session is kept alive while the content manager is open: the window
+  // slides forward for as long as the owner is signed in, so a long
+  // installation is never cut off by the clock.
+  useEffect(() => {
+    if (!ready) return undefined;
+    return startAdminKeepAlive();
+  }, [ready]);
+
   const loadStats = async () => {
     try {
-      const data = await callAdmin("stats");
+      const data = await callAdminData("stats");
       setStats(data);
     } catch (err) {
-      setMessage(err.message || "Could not load the dashboard.");
+      handleError(err);
     }
   };
 
@@ -167,9 +207,12 @@ export default function AdminDashboard() {
     loadStats();
     const entity = collectionFor[section];
     if (!entity) return;
-    callAdmin("list", { entity })
+    callAdminData("list", { entity })
       .then((data) => setRows(data.rows || []))
-      .catch(() => setRows([]));
+      .catch((err) => {
+        setRows([]);
+        handleError(err);
+      });
   }, [ready, section, collectionFor]);
 
   const openCreate = (entity) => {
@@ -195,30 +238,39 @@ export default function AdminDashboard() {
       Object.entries(form).forEach(([key, value]) => {
         values[key] = value === "" ? null : value;
       });
-      if (editing.id) await callAdmin("update", { entity: editing.entity, id: editing.id, values });
-      else await callAdmin("create", { entity: editing.entity, values });
+      if (editing.id) await callAdminData("update", { entity: editing.entity, id: editing.id, values });
+      else await callAdminData("create", { entity: editing.entity, values });
       setEditing(null);
-      const data = await callAdmin("list", { entity: editing.entity });
+      const data = await callAdminData("list", { entity: editing.entity });
       setRows(data.rows || []);
       loadStats();
       setMessage("Saved.");
     } catch (err) {
-      setMessage(err.message || "Could not save that record.");
+      handleError(err);
     } finally {
       setBusy(false);
     }
   };
 
-  const remove = async (entity, id) => {
+  // Nothing is removed straight away: the admin is asked first, and the
+  // record only goes when they confirm.
+  const remove = (entity, id) => {
+    setPendingDelete({ entity, id });
+  };
+
+  const confirmRemove = async () => {
+    if (!pendingDelete) return;
+    const { entity, id } = pendingDelete;
     setBusy(true);
     try {
-      await callAdmin("delete", { entity, id });
-      const data = await callAdmin("list", { entity });
+      await callAdminData("delete", { entity, id });
+      const data = await callAdminData("list", { entity });
       setRows(data.rows || []);
       loadStats();
       setMessage("Deleted.");
+      setPendingDelete(null);
     } catch (err) {
-      setMessage(err.message || "Could not delete that record.");
+      handleError(err);
     } finally {
       setBusy(false);
     }
@@ -228,7 +280,7 @@ export default function AdminDashboard() {
     setBusy(true);
     setImportResult(null);
     try {
-      const result = await callAdmin("bulkImport", { kind: importKind, text: importText, bookName: importBook });
+      const result = await callAdminData("bulkImport", { kind: importKind, text: importText, bookName: importBook });
       setImportResult(result);
       loadStats();
     } catch (err) {
@@ -242,21 +294,21 @@ export default function AdminDashboard() {
     setBusy(true);
     setMessage("");
     try {
-      const existing = await callAdmin("list", { entity: "SiteSettings" });
+      const existing = await callAdminData("list", { entity: "SiteSettings" });
       const rowsToWrite = Object.entries(settings).map(([key, value]) => ({ setting_key: key, setting_value: value }));
       const current = (existing.rows || []).filter((row) => ["ivory", "emerald", "gold"].includes(row.setting_key));
       for (const row of current) {
-        await callAdmin("update", { entity: "SiteSettings", id: row.id, values: { setting_key: row.setting_key, setting_value: settings[row.setting_key] } });
+        await callAdminData("update", { entity: "SiteSettings", id: row.id, values: { setting_key: row.setting_key, setting_value: settings[row.setting_key] } });
       }
       const known = new Set(current.map((row) => row.setting_key));
       for (const entry of rowsToWrite) {
         if (!known.has(entry.setting_key)) {
-          await callAdmin("create", { entity: "SiteSettings", values: entry });
+          await callAdminData("create", { entity: "SiteSettings", values: entry });
         }
       }
       setMessage("Theme colours updated on the live site.");
     } catch (err) {
-      setMessage(err.message || "Could not save the theme.");
+      handleError(err);
     } finally {
       setBusy(false);
     }
@@ -270,14 +322,10 @@ export default function AdminDashboard() {
         setPasswordNote("The new password and the confirmation do not match.");
         return;
       }
-      const result = await callAdmin("changePassword", {
+      const result = await callAdminData("changePassword", {
         current: passwordForm.current,
         next: passwordForm.next
       });
-      if (result && result.error) {
-        setPasswordNote(result.error);
-        return;
-      }
       setPasswordForm({ current: "", next: "", confirm: "" });
       setPasswordNote("Password updated. The old password no longer works.");
     } catch (err) {
@@ -314,7 +362,9 @@ export default function AdminDashboard() {
               type="button"
               className="pr-btn pr-btn-light-outline pr-btn-sm"
               onClick={() => {
-                setAdminToken("");
+                // Signing out takes the session back on the server, so it
+                // really ends and cannot be picked up again.
+                adminRevokeSession();
                 navigate(createPageUrl("Admin"));
               }}
             >
@@ -347,6 +397,34 @@ export default function AdminDashboard() {
           {section === "luganda" ? <LugandaInstaller /> : null}
 
           {section === "kjvplus" ? <KjvPlusInstaller /> : null}
+
+          {section === "prayers" ? <PrayersPanel mode="library" /> : null}
+
+          {section === "passages" ? <PrayersPanel mode="passages" /> : null}
+
+          {section === "import" ? (
+            <div>
+              <div className="pr-tabs" style={{ marginBottom: 18 }}>
+                <button
+                  type="button"
+                  className={`pr-tab ${importTab === "collections" ? "pr-tab-active" : ""}`}
+                  onClick={() => setImportTab("collections")}
+                >
+                  Content collections
+                </button>
+                <button
+                  type="button"
+                  className={`pr-tab ${importTab === "passages" ? "pr-tab-active" : ""}`}
+                  onClick={() => setImportTab("passages")}
+                >
+                  Prayers and cross-references
+                </button>
+              </div>
+              {importTab === "passages" ? <PrayerCrossRefImport /> : <JsonImportPanel />}
+            </div>
+          ) : null}
+
+          {section === "collections" ? <CollectionsPanel /> : null}
 
           {section === "overview" ? (
             <div>
@@ -723,6 +801,19 @@ export default function AdminDashboard() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="Delete this record?"
+        message={
+          pendingDelete
+            ? `This ${pendingDelete.entity} record will be removed from the app for good.`
+            : ""
+        }
+        busy={busy}
+        onConfirm={confirmRemove}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
@@ -732,10 +823,13 @@ function UsersPanel({ onMessage }) {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    callAdmin("users")
+    callAdminData("users")
       .then((data) => setRows(data.rows || []))
-      .catch(() => setRows([]));
-  }, []);
+      .catch((err) => {
+        setRows([]);
+        onMessage((err && err.message) || "Could not load the readers.");
+      });
+  }, [onMessage]);
 
   const filtered = rows.filter(
     (row) =>
@@ -775,10 +869,13 @@ function MessagesPanel({ onMessage }) {
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
-    callAdmin("list", { entity: "ContactMessage" })
+    callAdminData("list", { entity: "ContactMessage" })
       .then((data) => setRows(data.rows || []))
-      .catch(() => setRows([]));
-  }, []);
+      .catch((err) => {
+        setRows([]);
+        onMessage((err && err.message) || "Could not load the messages.");
+      });
+  }, [onMessage]);
 
   return (
     <div className="pr-card pr-card-pad">

@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { fse2 } from "@/api/fse2Client";
-import { callAdmin, getAdminToken, setAdminToken } from "@/lib/adminSession";
+import {
+  adminResetPassword,
+  adminSessionCheck,
+  adminSignIn
+} from "@/lib/adminSession";
 import { Loader2Icon, ShieldCheckIcon, ArrowLeftIcon } from "lucide-react";
 
 export default function Admin() {
@@ -11,13 +14,20 @@ export default function Admin() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetKey, setResetKey] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetStatus, setResetStatus] = useState("idle");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetError, setResetError] = useState(false);
 
+  // An open session goes straight to the content manager, so the owner is
+  // never asked for the password twice.
   useEffect(() => {
-    const token = getAdminToken();
-    if (!token) return;
-    callAdmin("session")
-      .then((data) => {
-        if (data && data.valid) navigate(createPageUrl("AdminDashboard"));
+    adminSessionCheck()
+      .then((state) => {
+        if (state && state.valid) navigate(createPageUrl("AdminDashboard"));
       })
       .catch(() => {});
   }, [navigate]);
@@ -27,17 +37,52 @@ export default function Admin() {
     setStatus("loading");
     setErrorMsg("");
     try {
-      const data = await callAdmin("login", { email, password });
-      if (!data || data.error) {
+      const result = await adminSignIn(email, password);
+      if (!result || !result.ok) {
         setStatus("error");
-        setErrorMsg(data?.error || "Could not sign you in.");
+        setErrorMsg(result?.error || "Could not sign you in.");
         return;
       }
-      setAdminToken(data.token);
       navigate(createPageUrl("AdminDashboard"));
     } catch (err) {
       setStatus("error");
       setErrorMsg(err.message || "Could not sign you in.");
+    }
+  };
+
+  const submitReset = async () => {
+    setResetStatus("loading");
+    setResetMessage("");
+    setResetError(false);
+    if (newPassword.length < 8) {
+      setResetStatus("error");
+      setResetError(true);
+      setResetMessage("The new password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetStatus("error");
+      setResetError(true);
+      setResetMessage("The two passwords are not the same.");
+      return;
+    }
+    try {
+      const data = await adminResetPassword(email, resetKey, newPassword);
+      if (data && data.error) {
+        setResetStatus("error");
+        setResetError(true);
+        setResetMessage(data.error);
+        return;
+      }
+      setResetStatus("success");
+      setResetKey("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setResetMessage(`The password for ${email} has been set. Sign in with it now.`);
+    } catch (err) {
+      setResetStatus("error");
+      setResetError(true);
+      setResetMessage(err.message || "Could not set the password.");
     }
   };
 
@@ -100,6 +145,79 @@ export default function Admin() {
               {status === "loading" ? "Signing in…" : "Sign in to the admin area"}
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={() => setResetOpen((value) => !value)}
+            className="pr-link"
+            style={{ marginTop: 14, fontSize: "0.85rem", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
+            {resetOpen ? "Hide the password reset" : "Lost the password?"}
+          </button>
+
+          {resetOpen ? (
+            <div style={{ marginTop: 14, padding: 16, borderRadius: 18, background: "rgba(29,64,53,0.05)", border: "1px solid var(--pr-border)" }}>
+              <p style={{ margin: "0 0 12px", fontSize: "0.82rem", lineHeight: 1.6 }}>
+                Set a new password for the administrator without the old one. This needs the owner key, which is kept
+                in the environment settings of this app.
+              </p>
+              <div className="pr-field">
+                <label className="pr-label" htmlFor="admin-reset-key">
+                  Owner key
+                </label>
+                <input
+                  id="admin-reset-key"
+                  className="pr-input"
+                  type="password"
+                  value={resetKey}
+                  onChange={(event) => setResetKey(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="pr-field">
+                <label className="pr-label" htmlFor="admin-new-password">
+                  New password
+                </label>
+                <input
+                  id="admin-new-password"
+                  className="pr-input"
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="pr-field">
+                <label className="pr-label" htmlFor="admin-confirm-password">
+                  Confirm the new password
+                </label>
+                <input
+                  id="admin-confirm-password"
+                  className="pr-input"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              {resetMessage ? (
+                <div className={resetError ? "pr-error" : "pr-success"} style={{ marginBottom: 12 }}>
+                  {resetMessage}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                className="pr-btn pr-btn-primary pr-btn-block"
+                onClick={submitReset}
+                disabled={resetStatus === "loading"}
+              >
+                {resetStatus === "loading" ? <Loader2Icon className="h-4 w-4 animate-spin" /> : null}
+                {resetStatus === "loading" ? "Setting the password…" : "Set the new password"}
+              </button>
+            </div>
+          ) : null}
 
           <hr className="pr-divider" />
           <Link to={createPageUrl("Home")} className="pr-link" style={{ fontSize: "0.85rem" }}>

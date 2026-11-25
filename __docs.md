@@ -2,2345 +2,1195 @@
 **App ID:** `app_73e21b4aa5684452`
 
 ---
-<think>
-We need produce Hebrew comprehensive docs based snippets. Need note addresses inferred createPageUrl likely /Name. Need cover all pages shown. "לכל קובץ שנוצר" perhaps all supplied non-trash? Enormous. Need organize. We can state based available excerpts, truncated. Include components, libs, functions, entities. File structure section potentially huge. Desired 5 but user asks high detail. Need avoid inventing exact URL maybe likely createPageUrl. Mention inferred.
+# תיעוד מערכת Pray-Read Bible
 
-We need cover page list around 30. Navigation table.
+> **היקף המסמך:** התיעוד מבוסס על קוד המקור שסופק. חלקים מהקבצים מסומנים ב„נחתך”, ולכן פרטים שלא ניתן לאמת מוצגים כמסקנה או מסומנים במפורש.
+>
+> **נוהל נתיבים:** הנתיבים שלהלן הם הנתיבים הלוגיים שבהם נעשה שימוש באפליקציה, כפי שמופיעים גם ב־`public/sw.js`. יישום ה־URL הסופי נעשה דרך `createPageUrl()` ולכן הוא עשוי לקבל prefix של ההתקנה או של הפלטפורמה.
+>
+> **קבצים לא פעילים:** הקבצים תחת `__trash/` הם קוד ישן או בדיקות זמניות. הקבצים תחת `__url_fetch/` הם snapshots של מקורות חיצוניים שנשמרו למחקר. אין להם תפקיד בהרצת האפליקציה.
 
-Need include technical issues perhaps observed: default admin password, SHA256, localStorage token, query keys missing auth filters, filtered client side privacy risk, footer only home, service worker route assumptions, PWA registration truncated. But requested docs, technical notes.
+---
 
-Let's formulate in Hebrew with sections 1-7. File structure per exact files, perhaps group repetitive entity files but says each. Can list all pages, components, entities, libs/functions. Include assets excluded as non-code, trash excluded.
+## 1. מהות המערכת
 
-Let's create detailed but within token.
-</think>
-# תיעוד מערכת  -  Pray-Read Bible
+### 1.1 תמצית
 
-## 0. תקציר מבנה המערכת
+Pray-Read היא אפליקציית React לקריאת התנ"ך, מחקר ותפילה, הכוללת:
 
-Pray-Read היא אפליקציית React לקריאת המקרא, מחקר ותפילה, בעברית, לוגנדה ואנגלית. היא מיועדת לקוראים שמבקשים לקרוא פרק מלא באיטיות, לסמן פסוקים, לשמור הערות והתפללות, להשתמש בחומרי לימוד ולשתף תוכן.
+- קריאת כל 66 ספרי התנ"ך.
+- תרגומים באנגלית ובלוגנדה.
+- KJV ו־KJV+ עם סימוני Strong’s.
+- פרקי תלמיד, הערות, הארות ומשאלות.
+- תפילות, מעברי פסוקים והפניות תנ"ך.
+- תוכניות קריאה יומיות, יומן תפילה ומעקב התקדמות.
+- קהילה: חשיפות אישיות, הערות, לייקים, שיעורים חיים וקבוצות דיבור.
+- שירי פסוקים עם נגן גלובלי שממשיך לעבוד בעת מעבר בין עמודים.
+- מרכז להורדה למצב לא מקוון.
+- ממשק ניהול תוכן, ייבוא כתובים, התקנת תרגומים וביקורת איכות הספרייה.
+
+### 1.2 קהלי היעד
+
+| קהל | שימושים מרכזיים |
+|---|---|
+| **קורא אורח** | קריאת פרקים, חיפוש ספרים, פתיחת הפניות, שיתוף, האזנה לשירי פסוקים והורדת תוכן למכשיר |
+| **קורא מחובר** | שמירת סימונים, ספריות, הערות, התקדמות קריאה, יומן, תפילות שמורות ופעילות קהילה |
+| **מנהל תוכן** | ניהול אוספים, ייבוא JSON, התקנת תרגומים, ביקורת כיסוי והפקת המשאלים |
+| **מנהל מערכת** | ניהול סביבת ההתקנה, סודות, הרשאות, cron ו־PWA |
+
+### 1.3 הערך שהמערכת מספקת
+
+1. **קריאה ללא חיבור:** פרקים שהורדו, תוכן ציבורי והגדרות Strong’s נשמרים ב־IndexedDB.
+2. **חוויית לימוד משולבת:** הפרק מוצג לצד מבוא, מתאר ספר, תפילה, פירוש, תובנה תאולוגית והיסטורית.
+3. **סנכרון בין מכשירים:** סימונים, הערות, יומן והתקדמות נשמרים בשרת עבור קורא מחובר.
+4. **שימוש חוזר בתוכן:** הייבוא מזהה רשומות לפי מפתח טבעי, ולכן ניתן להעלות את אותו קובץ שוב בלי ליצור כפילויות.
+5. **שקיפות מצב הספרייה:** דוח `scriptureAudit` מראה כיסוי פרקים, פרקים שבורים ופערים במספר הפסוקים.
+6. **גמישות תוכן:** ה־CMS בונה טפסים מתוך מטא־נתונים מרכזיים, כך שהוספת שדה או אוסף דורשת מעט קוד יישום.
+
+### 1.4 ארכיטקטורה כוללת
 
 המערכת מורכבת מארבע שכבות:
 
-1. **ממשק React**  -  דפים, רכיבים, ניווט, קורא מקרא, דשבורד, קהילה ומרכז ניהול.
-2. **שכבת נתוני האפליקציה**  -  `fse2`, React Query, IndexedDB, `localStorage`.
-3. **שכבת שירות (Serverless Functions)**  -  התקנת תוכן, אימות מנהלים, ביקורת ספרייה, הגשת תוכן ציבורי.
-4. **מודל נתונים**  -  Entities המגדירים את ספריית התוכן, סימני קריאה, משתמשים, קהילה, התקנות מקרא והגדרות Strong’s.
+1. **שכבת תצוגה  -  React**
+   - עמודים, קומפוננטות, React Router.
+   - עיצוב מבוסס `BRAND_CSS` ומשתני CSS.
+   - רכיבי `lucide-react` לאייקונים.
 
-מספר תכנים ציבוריים נטענים ממסד הנתונים, אך לצדם קיימת ספריית זרע מקומית (`seedContent`) המשמשת כ-fallback כדי שהממשק לא ייראה ריק בעת כשל שרת או כשטבלת התוכן עדיין ריקה.
+2. **שכבת נתוני לקוח**
+   - TanStack React Query לרשת, cache ו־mutations.
+   - Contextים ל־Auth, Theme ו־Player.
+   - מצב מקומי לטפסים ו־UI.
+   - `localStorage` להעדפות קלות ו־seed content.
+   - IndexedDB לנתוני offline.
 
-> **הערה:** חלק מהקבצים שסופקו מקוצרים בסימן `[נחתך]`. התיעוד מבוסס על הקוד הזמין, ולכן פרטים מדויקים על חלק מה-handler-ים, שדות והתנהגויות משניים עשויים להיות חלקיים.
+3. **שכבת פלטפורמה  -  FSe2**
+   - Authentication.
+   - Entities עם הרשאות שדות ו־ACL.
+   - Functions המופעלות בצד השרת.
+   - Cron להתקנת תוכן.
 
----
+4. **מקורות חיצוניים**
+   - `bible-api.com` לתקריט אנגלי.
+   - Wordplanet לתנ"ך לוגנדה.
+   - Bolls/Open Scriptures ל־KJV עם Strong’s.
+   - Blue Letter Bible כמקור משני להגדרות Strong’s.
+   - Open Scriptures Strong’s dictionaries כמקור מקורי למילון.
 
-# 1. מהות המערכת
+### 1.5 עקרונות מרכזיים
 
-## 1.1 מה המערכת עושה
-
-Pray-Read מאפשרת לקורא:
-
-- לקרוא את כל 66 ספרי המקרא.
-- לעבור בין פרקים ופסוקים.
-- לבחור תרגומים:
-  - KJV.
-  - KJV עם מספרי Strong’s.
-  - מקרא לוגנדה.
-  - תרגום/מקור אינטרנטי אם זמין.
-- לסמן פסוקים, להוסיף סימונים, הערות וסימני „ספר”.
-- לקרוא מבוא לספר, מתווה, תפילה לספר ומקראי מפתח.
-- לקבל הערות פרשה, תובנה תיאולוגית, היסטורית ו-Q&A.
-- להשתמש בהגדרות מספרי Strong’s באופן מקוון ולא מקוון.
-- להשתמש בתוכן אודיו דיגיטלי דרך נגן גלובלי.
-- לקרוא את יומן התפילה, תוכן יומי, מנהרת תפילה, קבוצות דיבור והודעות קהילה.
-- להוריד תוכן למכשיר ולקרוא אותו ללא חיבור.
-- לעקוב אחרי רצף קריאה, יעדי תוכן ופעילות קריאה.
-
-## 1.2 למי המערכת מיועדת
-
-### קוראים אורחים
-
-יכולים:
-
-- לקרוא את התוכן הציבורי.
-- להשתמש באופן מקוון.
-- להוריד תוכן מקומית.
-- לשתף פסוקים ותוכן.
-
-אינם יכולים לשמור על שרת סימנים אישיים או להגיש תוכן קהילתי.
-
-### משתמשים מחוברים
-
-יכולים:
-
-- לשמור התקדמות קריאה.
-- ליצור הערות, סימונים, ספסרים ויומן תפילה.
-- לשמור תפילות ותוכן יומי.
-- להשתף גילויים ולהגיב עליהם.
-- להצטרף לקבוצות דיבור ולשלוח הודעות.
-- לקבל התראות מספרי Strong’s.
-
-### מנהלי תוכן
-
-יכולים:
-
-- להתחבר למרכז הניהול באמצעות מנהל ייעודי.
-- לערוך תוכן ציבורי.
-- לנהל משתמשים והודעות.
-- להתקין את המקרא בלוגנדה ואת KJV+.
-- לבצע אימות על כל פרקי המקרא.
-- לנהל את היגיון, הצבעים וההגדרות.
-
-## 1.3 הערך של המערכת
-
-הערך המרכזי הוא אחדות בין:
-
-- **קריאה מקרא איטית וממוקדת.**
-- **חומר לימוד המצורך לכל ספר ופרק.**
-- **מעקב אישי ורצף קריאה.**
-- **עבודה ללא חיבור.**
-- **תוכן קהילתי.**
-- **תפילה מובנית סביב הפסוקים.**
-
-המערכת אינה רק מציגת מקרא; היא מנסה להפוך קריאה למסלול לימוד, סימון, תפילה ושיתוף.
+- **המקור החי מנוגה over seed content:** כאשר יש רשומות חיות, הן משתמשות בהן; כאשר אין, המערכת נופלת לנתוני `seedContent`.
+- **פרקים נשמרים כיחידה אחת לכל ספר ופרק:** `KjvPlusChapter` ו־`LugandaChapter` מכילים את הפסוקים כ־JSON.
+- **סימון לפי מפתח טבעי:** משמש לייבוא ולעדכון ללא כפילויות.
+- **שפות מבוססות קוד:** `en` ו־`lu`, עם אפשרות למצב `both` בחלק מהמסכים.
+- **הרשאות נפרדות למנהל תוכן:** מנהל התוכן אינו משתמש רגיל ואינו משתמש ב־`AuthContext`.
+- **התקנה אידמפוטנטית:** משימות ההתקנה בודקות קודם מה קיים, מתקינות רק פערים וניתנות להפעלה חוזרת.
 
 ---
 
-# 2. עמודים ותפקידיהם
+## 2. עמודים ותפקידיהם
 
-כתובות ה-URL מובנות לפי `createPageUrl("<PageName>")` ולכן צפויות להיות בצורת:
+### 2.1 עמודים ציבוריים וקריאה
 
-```text
-/<PageName>
-```
+| עמוד | נתיב לוגי | תפקיד | פעולות מרכזיות |
+|---|---|---|---|
+| `Home` | `/` | דף המותג והנחנה הראשי | כניסה לספריות, הצגת פסוק יום, תוכן מומלץ, קישורי קהילה, התקנת PWA, שיתוף ותרומה |
+| `About` | `/About` | הסבר על מטרת האפליקציה, הקהילה וערכי המוצר | קריאת מידע, חזרה לדף הבית, ניווט לפעילויות מרכזיות |
+| `BibleReader` | `/BibleReader` | בחירת ספר מתוך 66 הספרים והמעבר לפרקים | חיפוש לפי שם או קיצור באנגלית ולוגנדה, מעבר בין הברית הקדומה והחדשה, הצגת זמינות offline, בחירת פרק |
+| `Chapter` | `/Chapter?book={1..66}&chapter={n}&verse={n}&lang={en\|lu}` | מרכז חוויית הקריאה והלימוד | הצגת פסוקים, החלפת תרגום, Strong’s, הערות והדגשות, תפילות, הפניות, פירושים, משאלות, שיתוף, סימון התקדמות ופעילות |
+| `Devotionals` | `/Devotionals`, אפשר גם `?devotional={code}` | קטלוג וקריאת תוכניות יומיות | חיפוש, סינון, פתיחת תוכנית, סימון כהושלמה, שיתוף, מעבר לפסוק המקושר |
+| `PrayerLibrary` | `/PrayerLibrary` | ספריית תפילות באנגלית ולוגנדה | חיפוש לפי כותרת/גוף, סינון לפי קטגוריה ושפה, שמירת תפילה, ביטול השמירה, פתיחת פסוק ושיתוף |
+| `VerseSongs` | `/VerseSongs` | רשימת סדרות Verse-Song | השמעת סדרה, הצגת אוספים ושגיאות נגן |
+| `VerseSongSeries` | `/VerseSongSeries?series={name}` | פרטי סדרת שירים ופרקיה | השמעת פרק מסוים או המשך הסדרה, מעבר בין פרקים, חזרה לרשימת הסדרות |
+| `QA` | `/QA` | שאלות קוראים ותשובות | חיפוש, סינון קטגוריה, פתיחת תשובה, הגשת שאלה חדשה כמשתמש מחובר |
+| `Community` | `/Community` | ראשיית מרכזי הקהילה | מעבר לחשיפות אישיות, הוראות חיות וקבוצות דיבור, הצגת תוכן אחרון |
+| `CommunityRevelations` | `/CommunityRevelations` | חשיפות אישיות ותגובות | פרסום חשיפה, לייק, פתיחת תגובות, הוספת תגובה, מעבר לפסוק |
+| `CommunityLiveTeaching` | `/CommunityLiveTeaching` | אירועי הוראה חיים | צפייה בפרטי מפגש, תאריך, מנחה, תיאור וקישור הצטרפות |
+| `DiscussionGroups` | `/DiscussionGroups`, אפשר `?group={name}` | קבוצות לימוד משותפות | בחירת קבוצה, הצטרפות מקומית, צפייה בהודעות, שליחת הודעה |
+| `TheologicalInsights` | `/TheologicalInsights` | תובניות תאולוגיות | חיפוש, פתיחת תובנה, שיתוף, שמירה מקומית, מעבר לפסוק |
+| `HistoricalInsights` | `/HistoricalInsights` | תובניות היסטוריות | אותה תפודה כמו בתובניות התאולוגיות, עם תוכן היסטורי |
+| `VerseOfDay` | `/VerseOfDay` | פסוק מומלץ ליום הנוכחי | בחירת פסוק לפי תאריך, מעבר לפרק, שיתוף |
+| `Plan` | `/Plan` | מסלול קריאה של 30 יום | הצגת יום נוכחי ועתידי, סימון התקדמות, פתיחת הפרק המתוכנן |
+| `Journal` | `/Journal`, אפשר `?new=1&book={book}&chapter={n}` | יומן תפילה אישי | יצירה, עריכה, מחיקה וסינון לפי קטגוריה; ניתן לפתוח מתוך פרק |
+| `BibleNotes` | `/BibleNotes` | מרכז כל הסימונים, הספריות וההערות של הקורא | הצגה לפי סוג, ניווט לפרק ולפסוק, מחיקה או ניהול הסימונים לפי המימוש המלא |
+| `Offline` | `/Offline` | מרכז הורדות וניהול אחסון מקומי | הורדת תרגומים ותוכן, בדיקת מצב, ספירת אחסון, מחיקת נתונים |
+| `Dashboard` | `/Dashboard` | לוח אישי לקורא מחובר | סטטיסטיקות קריאה, highlights, bookmarks, notes, devotionals, saved prayers, streak ו־activity feed |
+| `InstallPrompt` | `/InstallPrompt` | הוראות והפעלת התקנת האפליקציה כ־PWA | זיהוי מערכת הפעלה, הפעלת `beforeinstallprompt`, טיפול ב־`appinstalled` |
 
-לדוגמה:
+### 2.2 עמודי חשבון
 
-```text
-/BibleReader
-/Chapter
-/Devotionals
-```
+| עמוד | נתיב לוגי | תפקיד | פעולות מרכזיות |
+|---|---|---|---|
+| `Login` | `/Login` | כניסת קורא רגיל | אימיות דוא״ל וסיסמה, הפנה ל־Dashboard, הצגת שגיאה |
+| `Signup` | `/Signup` | יצירת חשבון | בדיקת אורך סיסמה, אימות התאמה, תנאי שימוש, רישום, טיפול בדרישת אימות דוא״ל |
+| `ForgotPassword` | `/ForgotPassword` | שליחת בקשת איפוס | אימות כתובת דוא״ל והצגת תשובה כללית שאינה חושפת אם קיים חשבון |
+| `ResetPassword` | `/ResetPassword?token={token}` | קביעת סיסמה חדשה | קריאת `token` או `access_token`, אימות התאמה, אימות אורך, קריאה ל־`fse2.auth.resetPassword` |
+| `Logout` | `/Logout` | סיום התחברות | לאחר כ־900 מילישניות מנתק את המשתמש ומחזיר ל־Home |
 
-## 2.1 דפי עיקריים
+### 2.3 עמודי תוכן, ציבוריות וניהול
 
-### `pages/Home.jsx`  -  דף הבית
+| עמוד | נתיב לוגי | תפקיד | פעולות מרכזיות |
+|---|---|---|---|
+| `Contact` | `/Contact` | שליחת פנייה להנהלה | שם, דוא״ל, נושא, הודעה, בדיקת קלט, שליחה דרך `submitContactMessage` |
+| `Privacy` | `/Privacy` | מסמך פרטיות | הסבר על נתוני חשבון, נתוני מכשיר, offline, retention ושיתוף |
+| `Terms` | `/Terms` | תנאי שימוש | הסבר על שימוש בתוכן, זכויות יוצרים, מקורות התנ"ך ואחריות |
+| `Admin` | `/Admin` | כניסת מנהל התוכן | אימות דוא״ל/סיסמה, בדיקת session קיים, הפנה אוטומטית ל־Dashboard, איפוס סיסמה עם reset key |
+| `AdminDashboard` | `/AdminDashboard` | מרכז ניהול התוכן | מעבר בין overview, ספרים ופרקים, התקנת Luganda, התקנת KJV+, תוכניות, תפילות, prayer passages, ייבוא ואוספים כלליים; הפעלת audit ו־session management |
 
-**כתובת:** `/Home`
+### 2.4 דפוסי מסלול חשובים
 
-**תפקיד:**
-
-- נקודת הכניסה הראשית לאפליקציה.
-- מציג hero, פעולות ראשיות, תוכן יומי, פסוק היום, רשת תוכן והנהורת התקנת PWA.
-
-**למה הוא קיים:**
-
-- לתת למבקר להבין במהירות את הערך של המוצר.
-- להוביל לספרייה, תפילות, קהילה, מוזיקה ו-Q&A.
-- להציג תוכן יומי גם כשאין חיבור או כשמשתמש אינו מחובר.
-
-**פעולות מרכזיות:**
-
-- כניסה ל-Bible Reader.
-- מעבר ל-Devotionals.
-- פתיחת Prayer Library.
-- פתיחת Verse-Songs.
-- פתיחת Q&A.
-- מעבר לקהילה.
-- שיתוף פסוק היום.
-- התקנת האפליקציה למכשיר.
-- הצגת מדדי תוכן ופעילות אחרונה.
-
----
-
-### `pages/BibleReader.jsx`  -  מסך המקרא הראשי
-
-**כתובת:** `/BibleReader`
-
-**תפקיד:**
-
-- מציג את 66 הספרים בשתי מקוראות.
-- מאפשר חיפוש בשם הספר באנגלית או לוגנדה.
-- מאפשר בחירת ספר והצגת רשת הפרקים.
-- מנהל את זמינות התוכן להורדה מקומית.
-
-**מה המשתמש יכול לעשות:**
-
-- חיפוש ספר.
-- מעבר בין הברית הקדומה והחדשה.
-- לחיצה על ספר.
-- בחירת פרק.
-- בחירת שפת תצוגה.
-- בדיקה אם הספר זמין במלואו במכשיר.
-
-**אינטראקציות מרכזיות:**
-
-- שדה `book-search`.
-- לשוניות Old Testament/New Testament.
-- כרטיסי ספרים.
-- `ChapterGrid`.
-- סימון זמינות offline.
-
-**קבצים משולבים:**
-
-- `components/read/BookGrid.jsx`
-- `components/read/ChapterSelector.jsx`
-- `lib/offlineDb.js`
-- `lib/bibleBooks.js`
+- בחירת ספר מתמיד משתמשת במספר קנוני `book`, לא בשם, כדי לשמור על יציבות בין אנגלית ולוגנדה.
+- פרק נפתח עם `book` ו־`chapter`.
+- פסוק ממוקד נפתח עם `verse`.
+- לוגנדה מסומנת ב־`lang=lu`.
+- קישור לרשומת תוכנית יומית מזוהה לפי `devotional={code}`.
+- קישור לסדרת Verse-Song מזוהה לפי `series={name}`.
+- חזרה מהתחברות יכולה להעביר `next={encodedPath}`.
+- איפוס סיסמה דורש token מה־URL; לא ניתן לאפס סיסמה רק מכתובת דוא״ל.
 
 ---
 
-### `pages/Chapter.jsx`  -  מסך קריאת פרק
-
-**כתובת:** `/Chapter`
-
-**פרמטרים אפשריים:**
-
-```text
-?book=43&chapter=3
-&lang=lu
-&verse=16
-```
-
-**תפקיד:**
-
-הוא מסך הליבה של המערכת. הוא מטען פרק, מציג את פסוקיו, מאפשר לבחור תרגום, מנהל סימונים, הערות, תפילות, מקראי מפתח, Strong’s, השתפות והתקדמות קריאה.
-
-**מה המשתמש יכו�ל לעשות:**
-
-- לבחור תרגום.
-- לבחור פסוק.
-- להפעיל או להסיר היל��ט.
-- להוסיף סימון או הערה.
-- לפתוח תפילה הקשורה לפסוק.
-- לפתוח הערת פרשה.
-- לפתוח cross-references.
-- לשתף פסוק.
-- לפתוח הגדרת Strong’s.
-- לרשום את הפרק כהושלם.
-- להוסיף reflection ו-prayer point.
-- לפתוח חלונית המחקר הצדדית.
-- לקרוא את תפילת הסיום.
-
-**אינטראקציות מרכזיות:**
-
-- `VersionPicker`.
-- לחיצה על פסוק.
-- `VerseActionBar`.
-- `FloatingVerse`.
-- `PassageTabs`.
-- `PassagePrayer`.
-- `ChapterSidebar`.
-- `ChapterResourcesPanel`.
-- `ChapterReaderPane`.
-- `ChapterClosingPrayer`.
-- `ShareSheet`.
-- `StrongsPopup`.
-- כפתור “Mark complete”.
-
----
-
-### `pages/Plan.jsx`  -  תוכנית הקריאה
-
-**כתובת:** `/Plan`
-
-**תפקיד:**
-
-- מציג את מסלול הקריאה בן 30 הימים.
-- מחשב אילו ימים הושלמו.
-- מציג את היום הנוכחי ואת אחוז ההתקדמות.
-
-**מה המשתמש יכול לעשות:**
-
-- לראות את כל ימי התוכנית.
-- לראות איזה יום הושלם.
-- לעבור לפרק המשויך ב-Bible Reader.
-- לחשוף את המקרא בדפדפן.
-
-**מקורות נתונים:**
-
-- `ReadingPlan` דרך `fetchPublicCollection("plan")`.
-- fallback מקומי מ-`PLAN_DAYS`.
-- התקדמות מ-`Reading`.
-
----
-
-### `pages/Journal.jsx`  -  יומן התפילה
-
-**כתובת:** `/Journal`
-
-**תפקיד:**
-
-- יוצר ועורך רשומות אישיות.
-- מאפשר סינון לפי קטגוריה.
-- מאפשר מחיקה.
-- מחבר רשומה לפרק מקרא.
-
-**קטגוריות:**
-
-- praise.
-- petition.
-- confession.
-- thanksgiving.
-- reflection.
-
-**פעולות:**
-
-- הוספת רשומה.
-- עריכה.
-- מחיקה.
-- סינון.
-- קישור לפרק.
-- שמירה דרך `JournalEntry`.
-
----
-
-### `pages/BibleNotes.jsx`  -  סימונים והערות
-
-**כתובת:** `/BibleNotes`
-
-**תפקיד:**
-
-- מציג למשתמש את כל הסימונים, הספסרים וההערות ששמר.
-- מאפשר לחזור לפסוק המקורי.
-
-**מקורות:**
-
-- `StudyMark`.
-- `Reading`.
-
-**פעולות:**
-
-- סינון לפי סוג.
-- מעבר לפסוק.
-- מחיקה, במיקום שבו נמספק על ידי הדף/הרכיב.
-
----
-
-### `pages/Dashboard.jsx`  -  לוח בקרת הקורא
-
-**כתובת:** `/Dashboard`
-
-**תפקיד:**
-
-- להציג את מצב הקריאה של המשתמש.
-- להציג רצף ימי קריאה.
-- להציג פעילות אחרונה.
-- להציג ספירת תוכן offline.
-- להציג תוכן יומי והמשך התוכנית.
-
-**מקורות:**
-
-- `Reading`.
-- `StudyMark`.
-- `DevotionalProgress`.
-- `PrayerSaved`.
-- `ReadingActivity`.
-- IndexedDB.
-
-**פעולות:**
-
-- מעבר ל-Bible Reader.
-- מעבר ליומן.
-- מעבר להערות.
-- מעבר לתוכן יומי.
-- הצגת פעילות אחרונה.
-- ניהול הורדות offline.
-
----
-
-### `pages/Devotionals.jsx`  -  תוכן יומי
-
-**כתובת:** `/Devotionals`
-
-**תפקיד:**
-
-- מציג רשימת תוכני יומיים.
-- מאפשר חיפוש וסינון.
-- פותח תוכן יומי מלא במודאל.
-- מאפשר לסמן כהושלם.
-- מאפשר שיתוף.
-
-**מקורות:**
-
-- `Devotional`.
-- `DevotionalProgress`.
-- `DEVOTIONALS` מקומי כ-fallback.
-
-**פעולות:**
-
-- חיפוש.
-- סינון.
-- פתיחת מודאל.
-- סימון “done”.
-- שיתוף במספר ערוצים.
-- מעבר לאופן לוגנדה.
-
----
-
-### `pages/PrayerLibrary.jsx`  -  ספריית התפילות
-
-**כתובת:** `/PrayerLibrary`
-
-**תפקיד:**
-
-- מציג תפילות לפי קטגוריה ושפה.
-- מאפשר חיפוש, שיתוף ושמירה.
-
-**מקורות:**
-
-- `Prayer`.
-- `PrayerSaved`.
-- `PRAYERS` מקומי.
-
-**פעולות:**
-
-- חיפוש.
-- סינון לפי קטגוריה.
-- החלפת אנגלית/לוגנדה.
-- שמירת תפילה.
-- הסרת תפילה מהשמורים.
-- שיתוף.
-
----
-
-### `pages/QA.jsx`  -  שאלות ותשובות
-
-**כתובת:** `/QA`
-
-**תפקיד:**
-
-- מציג Q&A ציבורי.
-- מאפשר חיפוש וסינון לפי קטגוריה.
-- מאפשר למשתמש מחובר לשלוח שאלה.
-
-**מקורות:**
-
-- `QAEntry`.
-- `QA_ENTRIES` מקומי.
-
-**פעולות:**
-
-- חיפוש.
-- סינון.
-- פתיחת תשובה.
-- שליחת שאלה.
-- הצגת מצב הצלחה/שגיאה.
-
----
-
-### `pages/VerseOfDay.jsx`  -  פסוק היום
-
-**כתובת:** `/VerseOfDay`
-
-**תפקיד:**
-
-- מציג פסוק לפי תאריך.
-- מאפשר לעבור לקריאת הפסוק במקרא.
-- מאפשר לשתף.
-
-**מקורות:**
-
-- `VerseOfDay`.
-- `VERSE_OF_THE_DAY` מקומי.
-
----
-
-### `pages/TheologicalInsights.jsx`  -  תובנות תיאולוגיות
-
-**כתובת:** `/TheologicalInsights`
-
-**תפקיד:**
-
-- מציג רשימת תובנות תיאולוגיות.
-- מאפשר חיפוש, פתיחת פריט ושמירה מקומית.
-
-**רכיב מרכזי:** `InsightsBoard` עם `kind="theological"`.
-
----
-
-### `pages/HistoricalInsights.jsx`  -  תובנות היסטוריות
-
-**כתובת:** `/HistoricalInsights`
-
-**תפקיד:**
-
-- מציג רשימת תובנות היסטוריות.
-- מאפשר חיפוש, פתיחת פריט ושמירה.
-
-**רכיב מרכזי:** `InsightsBoard` עם `kind="historical"`.
-
----
-
-### `pages/VerseSongs.jsx`  -  רשימת סדרי Verse-Songs
-
-**כתובת:** `/VerseSongs`
-
-**תפקיד:**
-
-- מציג סדרות שירי מקרא.
-- מאפשר להפעיל סדרה שלמה דרך הנגן הגלובלי.
-
-**מקורות:**
-
-- `VerseSongSeries`.
-- `VerseSongEpisode`.
-- `VERSE_SONGS` מקומי.
-
-**פעולות:**
-
-- בחירת סדרה.
-- הפעלת סדרה.
-- מעבר לפרט הסדרה.
-
----
-
-### `pages/VerseSongSeries.jsx`  -  פרטי סדרת Verse-Song
-
-**כתובת:** `/VerseSongSeries?series=<שם>`
-
-**תפקיד:**
-
-- מציג את פרטי הסדרה.
-- מציג את הרצועות לפי סדר.
-- מאפשר לנגן רצועה בודדת או את הסדרה.
-
-**פעולות:**
-
-- Play/Pause.
-- בחירת רצועה.
-- מעבר בין רצועות דרך הנגן הגלובלי.
-- ניווט לסדרות אחרות.
-
----
-
-### `pages/Community.jsx`  -  מרכז הקהילה
-
-**כתובת:** `/Community`
-
-**תפקיד:**
-
-- מציג את שלושת אזורי הקהילה:
-  - Revelations.
-  - Live Teaching.
-  - Discussion Groups.
-- מציג תצוגה מקדימה של פעילות אחרונה.
-
-**פעולות:**
-
-- מעבר לכל אזור.
-- פתיחת גילוי, שיעור או קבוצה.
-
----
-
-### `pages/CommunityRevelations.jsx`  -  גילויים בקהילה
-
-**כתובת:** `/CommunityRevelations`
-
-**תפקיד:**
-
-- מציג פרסומים של קוראים.
-- מאפשר לפתוח תגובות.
-- מאפשר “לייק”.
-- מאפשר פרסום גילוי חדש.
-
-**מקורות:**
-
-- `Revelation`.
-- `COMMUNITY_POSTS` מקומי.
-
-**פעולות:**
-
-- פרסום גילוי.
-- לייק.
-- פתיחת/סגירת שרשור.
-- שליחת תגובה.
-- מעבר להתחברות אם המשתמש אינו מחובר.
-
----
-
-### `pages/CommunityLiveTeaching.jsx`  -  לימוד חי
-
-**כתובת:** `/CommunityLiveTeaching`
-
-**תפקיד:**
-
-- מציג מפגשי לימוד חי עתידיים.
-- מציג תאריך, מנחה, תיאור וקישור הצטרפות.
-
-**מקורות:**
-
-- `LiveSession`.
-- `LIVE_SESSIONS` מקומי.
-
-**פעולות:**
-
-- פתיחת מפגש.
-- מעבר לקישור ההצטרפות.
-
----
-
-### `pages/DiscussionGroups.jsx`  -  קבוצות דיבור
-
-**כתובת:** `/DiscussionGroups`
-
-**תפקיד:**
-
-- מציג קבוצות לימוד.
-- מאפשר להצטרף לקבוצה.
-- מאפשר לקרוא ולשלוח הודעות בתוך הקבוצה.
-
-**מקורות:**
-
-- `DiscussionGroup`.
-- `DiscussionThread`.
-- `DISCUSSION_GROUPS` מקומי.
-
-**פעולות:**
-
-- בחירת קבוצה.
-- הצטרפות/עזיבה מקומית.
-- שליחת הודעה.
-- הצגת היסטוריית שיחה.
-
----
-
-### `pages/Offline.jsx`  -  מרכז אופליין
-
-**כתובת:** `/Offline`
-
-**תפקיד:**
-
-- מנהל את התוכן הזמין במכשיר.
-- מאפשר להוריד או למחוק:
-  - פרקי מקרא.
-  - פסוקים.
-  - הגדרות Strong’s.
-  - תוכנים יומיים.
-  - הערות.
-  - תפילות.
-  - Q&A.
-  - פסוק היום.
-
-**פעולות:**
-
-- הורדת תרגום שלם או חלקי.
-- מחיקת קבצים מקומיים.
-- ניקוי מאגר.
-- הצגת נפח אחסון ומספר רשומות.
-- בדיקת זמינות מקומית של פרק.
-
----
-
-### `pages/About.jsx`  -  אודות
-
-**כתובת:** `/About`
-
-**תפקיד:**
-
-- מסביר את המטרה של Pray-Read.
-- מציג את הערך הרוחני והמוצרי של האפליקציה.
-- מפנה למספר נתיבי שימוש מרכזיים.
-
----
-
-### `pages/Contact.jsx`  -  יצירת קשר
-
-**כתובת:** `/Contact`
-
-**תפקיד:**
-
-- מאפשר לשלוח הודעה לצוות.
-
-**טופס:**
-
-- שם.
-- דוא"ל.
-- נושא.
-- הודעה.
-
-**פעולה:**
-
-- `submitContactMessage` יוצר רשומה ב-`ContactMessage`.
-
----
-
-### `pages/InstallPrompt.jsx`  -  התקנת PWA
-
-**כתובת:** `/InstallPrompt`
-
-**תפקיד:**
-
-- מסביר כיצד להתקין את האפליקציה בדפדפן או במכשיר.
-- מזהה פלטפורמה.
-- מפעיל את `beforeinstallprompt` כאשר הדפדפן מאפשר התקנה.
-
----
-
-### `pages/Login.jsx`  -  התחברות
-
-**כתובת:** `/Login`
-
-**תפקיד:**
-
-- מאפשר למשתמש להתחבר עם דוא"ל וסיסמה דרך `fse2.auth.login`.
-- לאחר הצלחה מעביר ל-Dashboard.
-
----
-
-### `pages/Signup.jsx`  -  הרשמה
-
-**כתובת:** `/Signup`
-
-**תפקיד:**
-
-- יוצר חשבון קורא.
-- מאמת אורך סיסמה, אימות סיסמה והסכמת תנאי שימוש.
-- תומך במצב שבו נדרש אימות דוא"ל לפני כניסה.
-
----
-
-### `pages/ForgotPassword.jsx`  -  שכחתי סיסמה
-
-**כתובת:** `/ForgotPassword`
-
-**תפקיד:**
-
-- שולח בקשת איפוס סיסמה באמצעות `fse2.auth.forgotPassword`.
-- אינו חושף אם כתובת הדוא"ל קיימת בפועל, כדי לא לחשוף כתובות רשומות.
-
----
-
-### `pages/ResetPassword.jsx`  -  איפוס סיסמה
-
-**כתובת:** `/ResetPassword?token=<token>`
-
-**תפקיד:**
-
-- מאמת את קיום token.
-- מאמת סיסמה חדשה באורך של שמונה תווים לפחות.
-- קורא ל-`fse2.auth.resetPassword`.
-
----
-
-### `pages/Logout.jsx`  -  התנתקות
-
-**כתובת:** `/Logout`
-
-**תפקיד:**
-
-- מנקה את מצב ההתחברות.
-- מחזיר את המשתמש לדף הבית.
-
----
-
-### `pages/Privacy.jsx`  -  מדיניות פרטיות
-
-**כתובת:** `/Privacy`
-
-**תפקיד:**
-
-- מסביר אילו נתונים נשמרים בשרת.
-- מסביר אילו נתונים נשמרים מקומית.
-- מציג מידע בנוגע למחיקת נתונים ושימוש בעוגיות.
-
----
-
-### `pages/Terms.jsx`  -  תנאי שימוש
-
-**כתובת:** `/Terms`
-
-**תפקיד:**
-
-- מגדיר שימוש אישי וקהילתי בתוכן.
-- מציין זכויות יוצרים והגבלות בפרסום מחדש.
-- מסביר את מקורות הטקסטים המקראיים.
-
----
-
-### `pages/Admin.jsx`  -  כניסת מנהל תוכן
-
-**כתובת:** `/Admin`
-
-**תפקיד:**
-
-- מספקת כניסה נפרדת למנהל.
-- משתמשת ב-`adminSession`, שומרת את ה-token ב-`localStorage`.
-- מנסהת לשחזר מצב באמצעות פעולת `session`.
-
-**פעולות:**
-
-- התחברות עם דוא"ל וסיסמת מנהל.
-- זיהוי session שפג.
-- מעבר ל-`/AdminDashboard`.
-
----
-
-### `pages/AdminDashboard.jsx`  -  לוח הניהול
-
-**כתובת:** `/AdminDashboard`
-
-**תפקיד:**
-
-מרכז ה-CMS. כולל את הסעיפים:
-
-- Dashboard.
-- Books & Chapters.
-- Luganda Bible.
-- KJV+ with Strong’s.
-- Devotionals.
-- Prayer Library.
-- Verse-Songs.
-- Q&A.
-- Insights.
-- Users.
-- Messages.
-- Text Colours.
-- Activity Log.
-- Settings.
-
-**פעולות:**
-
-- יצירה, עריכה ומחיקה של רשומות.
-- התקנת ותיקון המקרא.
-- הפעלת ביקורת ספרייה.
-- ניהול צבעי האתר.
-- ניהול משתמשים, הודעות ויומן פעילות.
-- יציאה ממנהל תוכן.
-
----
-
-# 3. מפת ניווט לצורכי Debug
+## 3. מפת ניווט לצורך DEBUG
 
 | פעולה | נקודת כניסה | כפתור/לינק | יעד |
 |---|---|---|---|
-| פתיחת דף הבית | כל דף | לוגו Pray-Read או תפריט Home | `/Home` |
-| פתיחת קורא המקרא | דף הבית / Header | “Bible Reader” | `/BibleReader` |
-| חיפוש ספר | `/BibleReader` | שדה חיפוש ליד `BookGrid` | רשת הספרים מסוננת |
-| מעבר לברית הקדומה | `/BibleReader` | לשונית Old Testament | מגירה `section-old` |
-| מעבר לברית החדשה | `/BibleReader` | לשונית New Testament | מגירה `section-new` |
-| בחירת ספר | `/BibleReader` | כרטיס ספר | רשת פרקים של הספר |
-| בחירת פרק | רשת הפרקים | מספר פרק | `/Chapter?book=<n>&chapter=<n>` |
-| פתיחת פרק מתוכנית | `/Plan` | כרטיס יום/כפתור פתיחה | `/Chapter?...` |
-| פתיחת ספר יומי | Header/Home | “Devotionals” | `/Devotionals` |
-| חיפוש תוכן יומי | `/Devotionals` | שדה חיפוש | רשימה מסוננת |
-| פתיחת תוכן יומי | `/Devotionals` | כרטיס/כפתור פתיחה | מודאל תוכן יומי |
-| סימון תוכן יומי כהושלם | מודאל תוכן יומי | כפתור Done | `DevotionalProgress` |
-| פתיחת ספריית תפילות | Header/Home | “Prayer Library” | `/PrayerLibrary` |
-| סינון תפילות | `/PrayerLibrary` | Dropdown קטגוריה | רשימת תפילות מסוננת |
-| החלפת שפת תפילה | `/PrayerLibrary` | EN/LU | תוכן תפילה מתחלף |
-| שמירת תפילה | `/PrayerLibrary` | סמל ספסר | `PrayerSaved` |
-| פתיחת Q&A | Header/Home | “Q&A” | `/QA` |
-| שליחת שאלה | `/QA` | טופס “Ask a question” | `QAEntry` |
-| פתיחת תובנה תיאולוגית | Header/Footer | “Theological insights” | `/TheologicalInsights` |
-| פתיחת תובנה היסטורית | Header/Footer | “Historical insights” | `/HistoricalInsights` |
-| חיפוש תובנה | דף Insights | שדה חיפוש | רשימה מסוננת |
-| פתיחת פסוק היום | Header/Footer | “Verse of the day” | `/VerseOfDay` |
-| מעבר לפסוק היום | `/VerseOfDay` | קישור/כפתור פתיחה | `/Chapter?...&verse=...` |
-| פתיחת Verse-Songs | Header/Footer | “Verse-Songs” | `/VerseSongs` |
-| הפעלת סדרה | `/VerseSongs` | כפתור Play בסדרה | הנגן הגלובלי |
-| פתיחת סדרה | `/VerseSongs` | שם הסדרה | `/VerseSongSeries?series=...` |
-| הפעלת רצועה | פרט סדרה | Play ליד רצועה | הנגן הגלובלי |
-| פתיחת קהילה | Header/Footer | “Community” | `/Community` |
-| פרסום גילוי | `/CommunityRevelations` | טופס “Share what God showed you” | `Revelation` |
-| לייק גילוי | `/CommunityRevelations` | כפתור Heart | עדכון לייק/רשומת `Revelation` |
-| פתיחת תגובות | `/CommunityRevelations` | כפתור Comments | שרשור תגובות |
-| שליחת תגובה | שרשור תגובות | טופס תגובה | רשומת `Revelation` עם `parent_id` |
-| פתיחת לימוד חי | `/Community` | “Live teaching” | `/CommunityLiveTeaching` |
-| הצטרפות למפגש | `/CommunityLiveTeaching` | “Join session” | `join_link` חיצוני |
-| פתיחת קבוצות | `/Community` | “Discussion groups” | `/DiscussionGroups` |
-| בחירת קבוצה | `/DiscussionGroups` | כרטיס קבוצה | שיחת הקבוצה |
-| הצטרפות לקבוצה | `/DiscussionGroups` | כפתור Join/Leave | מצב מקומי ב-`localStorage` |
-| שליחת הודעה | `/DiscussionGroups` | טופס הודעה | `DiscussionThread` |
-| פתיחת דשבורד | Header | “Dashboard” | `/Dashboard` |
-| פתיחת הערות | Header/Footer | “My notes” | `/BibleNotes` |
-| פתיחת יומן | Header/Footer | “Prayer journal” | `/Journal` |
-| יצירת רשומת יומן | `/Journal` | “New entry” / `?new=1` | טופס יומן |
-| שמירת יומן | `/Journal` | “Save entry” | `JournalEntry` |
-| מעבר לפרק מהיומן | כרטיס יומן | קישור ספר/פרק | `/Chapter?...` |
-| פתיחת מרכז אופליין | Header/Footer | “Offline centre” | `/Offline` |
-| הורדת מקרא למכשיר | `/Offline` | כפתור הורדה ליד תרגום | IndexedDB |
-| מחיקת נתוני מכשיר | `/Offline` | כפתור מחיקה/ניקוי | IndexedDB |
-| התחברות | Header | “Sign in” | `/Login` |
-| הרשמה | דפי התחברות | “Create account” | `/Signup` |
-| איפוס סיסמה | דף התחברות | “Forgot password” | `/ForgotPassword` |
-| בחירת תרגום בקריאה | `/Chapter` | `VersionPicker` | מעבר לתרגום פעיל |
-| התקנת תרגום | `/Chapter` / `/Offline` | כפתור התקנה | `versions.js` + IndexedDB |
-| בחירת פסוק | `/Chapter` | לחיצה על פסוק | פעולות פסוק |
-| הערת פסוק | `/Chapter` | כפתור Note | `StudyMark` |
-| היל��ט פסוק | `/Chapter` | כפתור Highlighter | `StudyMark` |
-| סימון פסוק | `/Chapter` | כפתור Bookmark | `StudyMark` |
-| פתיחת תפילת הפסוק | `/Chapter` | כפתור Prayer | `PassagePrayer` |
-| פתיחת פרשה | `/Chapter` | כפתור Commentary | לשונית commentary |
-| פתיחת cross-reference | `/Chapter` | כפתור קישור | `FloatingVerse` |
-| שיתוף פסוק | `/Chapter` | כפתור Share | `ShareSheet` |
-| פתיחת הגדרת Strong’s | `/Chapter` | קוד כחול G/H | `StrongsPopup` |
-| השלמת פרק | `/Chapter` | “Mark complete” | `Reading` |
-| פתיחת מדריך התוכן | `/Admin` | כניסת מנהל | `/AdminDashboard` |
-| התקנת לוגנדה | `/AdminDashboard` | “Install Luganda” | `lugandaInstall` |
-| התקנת KJV+ | `/AdminDashboard` | “Install KJV+” | `kjvInstall` |
-| הפעלת ביקורת | `/AdminDashboard` | “Run library report” | `scriptureAudit` |
-| עריכת תוכן | `/AdminDashboard` | Edit | מודאל לפי `FIELDS` |
-| מחיקת תוכן | `/AdminDashboard` | Delete | מחיקת entity |
-| יצירת תוכן | `/AdminDashboard` | Add/Create | מודאל יצירה |
-| התנתקות מנהל | `/AdminDashboard` | Logout | ניקוי admin token |
+| חזרה לדף הבית | כל עמוד | לוגו ה־Header | `/` |
+| פתיחת ספר | `BibleReader` | כרטיס ספר | מעבר ל־`Chapter` עם `book` ו־`chapter` |
+| פתיחת פרק מתוך ספר | `BibleReader` | אריח פרק ב־`ChapterGrid` | `/Chapter?book=...&chapter=...` |
+| חיפוש ספר | `BibleReader` | שדה החיפוש | סינון מיידי של 66 הספרים |
+| מעבר להברית החדשה | `BibleReader` | לשונית New Testament | גלילה/בחירת ספרים מהמקום |
+| פתיחת פסוק מהפרק | `Chapter` | לחיצה על פסוק | בחירת פסוק והצגת `VerseActionBar` |
+| פתיחת משאלה או תובנה | `Chapter` | לשונית Q&A/Insights | `PassageTabs` בתוך הפרק |
+| פתיחת תפילת פסוק | `Chapter` | לחיצה על Prayer ב־`VerseActionBar` | `PassagePrayer` בתוך הפרק |
+| פתיחת הפניות | `Chapter` | לחיצה על Cross-references | `CrossRefList` |
+| פתיחת הפניה | `Chapter` | לחיצה על פסוק ב־`CrossRefList` | ניווט ל־`Chapter` עם פסוק יעד |
+| שיתוף פסוק | `Chapter` | Share ב־`VerseActionBar` | `ShareSheet` |
+| העתקת פסוק | `Chapter` | Copy ב־`VerseActionBar` | Clipboard והודעת “Copied” |
+| הדגשת פסוק | `Chapter` | Highlight ב־`VerseActionBar` | יצירת `StudyMark` מסוג highlight |
+| סימון פסוק | `Chapter` | Bookmark ב־`VerseActionBar` | יצירת `StudyMark` מסוג bookmark |
+| כתיבת הערה | `Chapter` | Note ב־`VerseActionBar` | יצירת `StudyMark` מסוג note |
+| פתיחת הגדרת Strong’s | `Chapter` ב־KJV+ | לחיצה על קוד G/H | `StrongsPopup` |
+| פתיחת פסוק מהמבוא או התפילה | `BibleReader` | קישור בתוך `AnnotatedText` | `VersePopup` בתוך העמוד |
+| מעבר למקום במתאר הספר | `BibleReader` | כותרת ב־`BookOutline` | בחירת קטע מודגש במתאר |
+| בחירת יום בתוכנית | `Plan` | כרטיס יום | `/Chapter` עם הפרק המתוכנן |
+| פתיחת תוכנית יומית | `Devotionals` | כרטיס או קישור יומן | מודאל תוכנית; לחילוץ מקור ישיר `/Devotionals?devotional=...` |
+| סימון תוכנית כהושלמה | `Devotionals` | Done/Complete | יצירה או מחיקת `DevotionalProgress` |
+| פתיחת פסוק מתוכנית | `Devotionals` | קישור Scripture | `Chapter` |
+| שמירת תפילה | `PrayerLibrary` | כפתור Bookmark | יצירת `PrayerSaved` |
+| ביטול שמירת תפילה | `PrayerLibrary` | כפתור שמור/מסומן | מחיקת `PrayerSaved` |
+| פתיחת תובנה | `InsightsBoard` | כרטיס תובנה | מודאל תוכן ושיתוף |
+| שיתוף תובנה | `InsightsBoard` | ShareRow | רשת חברתית או Clipboard |
+| פרסום חשיפה | `CommunityRevelations` | טופס החשיפה | יצירת `Revelation` |
+| לייק חשיפה | `CommunityRevelations` | כפתור Heart | עדכון מונה הלייקים |
+| פתיחת תגובות | `CommunityRevelations` | כפתור Comments | רשימת תגובות בתוך הכרטיס |
+| הוספת תגובה | `CommunityRevelations` | טופס תגובה | יצירת `Revelation` עם `parent_id` |
+| בחירת קבוצה | `DiscussionGroups` | כרטיס קבוצה | פתיחת הודעות הקבוצה |
+| שליחת הודעה | `DiscussionGroups` | טופס הודעה | יצירת `DiscussionThread` |
+| נגן סדרת שירים | `VerseSongs` | Play | הפעלת `PlayerProvider` ו־`GlobalPlayer` |
+| המשך נגן מסדרה | `VerseSongSeries` | Play פרק | החלפת המסלול הפעיל בנגן הגלובלי |
+| הורדת פרק | `Offline` | כפתור Download ליד תרגום | אחסון ב־IndexedDB |
+| מחיקת offline | `Offline` | Clear/Delete | מחיקת stores מהמכשיר |
+| כניסת קורא | Header | Sign in | `/Login` |
+| יצירת חשבון | Header | Get started/Sign up | `/Signup` |
+| יציאה | Header | Logout | `/Logout` ואז `/` |
+| כניסת מנהל תוכן | ידנית | `/Admin` | טופס Admin |
+| פתיחת מסף הניהול | `Admin` | Sign in | `/AdminDashboard` |
+| מעבר לאוסף ניהולי | `AdminDashboard` | תפריט Collections | `CollectionsPanel` |
+| יצירת רשומה | `CollectionsPanel` | Add/New | `RecordEditor` |
+| עריכת רשומה | `CollectionsPanel` | Pencil | `RecordEditor` |
+| מחיקת רשומה | `CollectionsPanel` | Trash | `ConfirmDialog` ואז delete |
+| התקנת Luganda | `AdminDashboard` | Install/Download | `lugandaInstall` function |
+| התקנת KJV+ | `AdminDashboard` | Install/Download | `kjvInstall` function |
+| הפקת דוח ספרייה | `AdminDashboard` | Audit/Report | `scriptureAudit` function |
+| העלאת JSON כללי | `AdminDashboard` | Import JSON | `JsonImportPanel` |
+| העלאת תפילות והפניות | `AdminDashboard` | Prayer Passages Import | `PrayerCrossRefImport` |
+
+### 3.1 נקודות חיפוש ב־URL בזמן דיבאג
+
+| פרמטר | היכן משמש | ערךים צפויים |
+|---|---|---|
+| `book` | `Chapter`, `BibleNotes`, `Journal`, `Plan` | מספר ספר 1 - 66 |
+| `chapter` | `Chapter`, `Journal` | מספר פרק חיובי |
+| `verse` | `Chapter`, `BibleNotes` | מספר פסוק |
+| `lang` | `Chapter`, `ChapterGrid` | `en` או `lu` |
+| `devotional` | `Devotionals` | קוד תוכנית, למשל `D-001` |
+| `series` | `VerseSongSeries` | שם סדרה מלא |
+| `group` | `DiscussionGroups` | שם קבוצה |
+| `new` | `Journal` | `1` לפתיחת טופס חדש |
+| `token` / `access_token` | `ResetPassword` | token איפוס מתקף |
+| `next` | `Login` | נתיב חזרה מקודד |
 
 ---
 
-# 4. מבנה הקבצים
+## 4. מבנה קבצים
 
-## 4.1 דפים
+### 4.1 קבצי עמודים
 
-| קובץ | תפקיד | מה מרנדר |
+כל קובץ `pages/PageName.jsx` מייצג עמוד ניתוב עצמאי. התפקידים המפורטים בסעיף 2:
+
+- `pages/About.jsx`
+- `pages/Admin.jsx`
+- `pages/AdminDashboard.jsx`
+- `pages/BibleNotes.jsx`
+- `pages/BibleReader.jsx`
+- `pages/Chapter.jsx`
+- `pages/Community.jsx`
+- `pages/CommunityLiveTeaching.jsx`
+- `pages/CommunityRevelations.jsx`
+- `pages/Contact.jsx`
+- `pages/Dashboard.jsx`
+- `pages/Devotionals.jsx`
+- `pages/DiscussionGroups.jsx`
+- `pages/ForgotPassword.jsx`
+- `pages/HistoricalInsights.jsx`
+- `pages/Home.jsx`
+- `pages/InstallPrompt.jsx`
+- `pages/Journal.jsx`
+- `pages/Login.jsx`
+- `pages/Logout.jsx`
+- `pages/Offline.jsx`
+- `pages/Plan.jsx`
+- `pages/PrayerLibrary.jsx`
+- `pages/Privacy.jsx`
+- `pages/QA.jsx`
+- `pages/ResetPassword.jsx`
+- `pages/Signup.jsx`
+- `pages/Terms.jsx`
+- `pages/TheologicalInsights.jsx`
+- `pages/VerseOfDay.jsx`
+- `pages/VerseSongSeries.jsx`
+- `pages/VerseSongs.jsx`
+
+### 4.2 רכיבי ניהול
+
+| קובץ | אחריות | מה מרונדר |
 |---|---|---|
-| `pages/Home.jsx` | דף הבית וכניסת המשתמש למוצר | Hero, משבצות שירות, פסוק היום, תוכן יומי, התקנת PWA |
-| `pages/BibleReader.jsx` | בחירת ספר ופרק | חיפוש, רשת 66 ספרים, רשת פרקים, מצב offline |
-| `pages/Chapter.jsx` | קריאת פרק מלאה | פסוקים, סימונים, הערות, תפילה, פרשה, Strong’s, השתפה, התקדמות |
-| `pages/Plan.jsx` | מסלול קריאה 30 יום | רשימת ימים, סטטוס, התקדמות, קישורי פרקים |
-| `pages/Journal.jsx` | יומן תפילה אישי | טופס, רשומות, סינון, עריכה ומחיקה |
-| `pages/BibleNotes.jsx` | סימונים והערות | הילייטים, ספסרים, הערות, קישורים לפסוקים |
-| `pages/Dashboard.jsx` | לוח קורא | סטטיסטיקות, streak, activity feed, offline, תוכן יומי |
-| `pages/Devotionals.jsx` | ספריית תוכן יומי | רשימה, מודאל תוכן, סימון הושלם, שיתוף |
-| `pages/PrayerLibrary.jsx` | ספריית תפילות | חיפוש, קטגוריות, שפות, שמירה ושיתוף |
-| `pages/QA.jsx` | שאלות ותשובות | רשימת תשובות, חיפוש, טופס שאלה |
-| `pages/VerseOfDay.jsx` | פסוק היום | פסוק, הערה, שיתוף וקישור למקרא |
-| `pages/TheologicalInsights.jsx` | תובנות תיאולוגיות | `InsightsBoard` עם סוג תיאולוגי |
-| `pages/HistoricalInsights.jsx` | תובנות היסטוריות | `InsightsBoard` עם סוג היסטורי |
-| `pages/VerseSongs.jsx` | רשימת סדרות שירים | כרטיסי סדרות, הפעלת queue |
-| `pages/VerseSongSeries.jsx` | פרטי סדרת שירים | רצועות, זמנים, נגן |
-| `pages/Community.jsx` | מרכז קהילה | שלושה אזורי קהילה ותצוגת פעילות |
-| `pages/CommunityRevelations.jsx` | גילויים ותגובות | פרסום, לייק, תגובות |
-| `pages/CommunityLiveTeaching.jsx` | לימוד חי | מפגשים, מארחים, תאריכים וקישורים |
-| `pages/DiscussionGroups.jsx` | קבוצות לימוד | בחירת קבוצה, הצטרפות, שיחה |
-| `pages/Offline.jsx` | מרכז אופליין | הורדות, מחיקות, נתוני מכשיר |
-| `pages/About.jsx` | מידע על האפליקציה | Hero ומסגרת מוצר |
-| `pages/Contact.jsx` | יצירת קשר | טופס הודעה |
-| `pages/InstallPrompt.jsx` | התקנת PWA | הוראות לפי פלטפורמה והפעלת prompt |
-| `pages/Login.jsx` | התחברות קורא | טופס דוא"ל וסיסמה |
-| `pages/Signup.jsx` | הרשמת קורא | טופס רישום ואימות |
-| `pages/ForgotPassword.jsx` | שליחת איפוס | טופס דוא"ל |
-| `pages/ResetPassword.jsx` | קביעת סיסמה חדשה | טופס token וסיסמה |
-| `pages/Logout.jsx` | התנתקות | מסך טעינה וניקוי session |
-| `pages/Privacy.jsx` | מדיניות פרטיות | הסבר תקנות אחסון ושימוש בנתונים |
-| `pages/Terms.jsx` | תנאי שימוש | זכויות תוכן והגבלות |
-| `pages/Admin.jsx` | כניסת מנהל | טופס admin ואימות session |
-| `pages/AdminDashboard.jsx` | ניהול תוכן | מספר אזורי ניהול וטפסים ייעודיים |
+| `components/admin/ChapterCoverage.jsx` | מציג כיסוי פרקים לפי ספר | רשת ספרים, טווחי פרקים חסרים/שבורים, מצב השלמה ופירוט נפתח |
+| `components/admin/CollectionsPanel.jsx` | מנהל רשומות של אוספים לפי מטא־נתונים | בחירת אוסף, חיפוש, טבלה, הוספה, עריכה, מחיקה |
+| `components/admin/ConfirmDialog.jsx` | אישור פעולה הרסנית | מודאל Delete עם כפתורי אישור וביטול |
+| `components/admin/CrossRefEditor.jsx` | עריכת רשימת הפניות כ־chips | הוספה, הסרה, מניעת כפילויות case-insensitive |
+| `components/admin/JsonImportPanel.jsx` | ייבוא JSON גמיש לאוספים | בחירת קובץ, preview, validation, aliases, upsert ודוח התקדמות |
+| `components/admin/KjvPlusInstaller.jsx` | התקנת KJV+ ומילון Strong’s | סטטוס, כיסוי פרקים, הפעלת התקנה ודוח audit |
+| `components/admin/LibraryReport.jsx` | דוח מצב ספרייה | כיסוי, פרקים שבורים, פערי מספר פסוקים ומצב Strong’s |
+| `components/admin/LugandaInstaller.jsx` | התקנת תנ"ך לוגנדה | הפעלת install, סטטוס, כיסוי ורשימת פרקים חסרים |
+| `components/admin/PrayerCrossRefImport.jsx` | ייבוא תפילות והפניות לפי ספר | הורדת template, בדיקה מוקדמת, progress ו־upsert |
+| `components/admin/PrayersPanel.jsx` | מנהל ספריית התפילות ו־PrayerPassage | שני מצבים: ספרייה ומעברי פסוקים; חיפוש, סינון ו־CRUD |
+| `components/admin/RecordEditor.jsx` | טופס גנרי ליצירה ועריכה | שדות text, textarea, number, boolean ו־refs |
 
-## 4.2 רכיבי מנהל
+### 4.3 רכיבים כלליים
 
-| קובץ | תפקיד | מה מרנדר |
+| קובץ | אחריות | מה מרונדר |
 |---|---|---|
-| `components/admin/ChapterCoverage.jsx` | סיכום כיסוי מקרא | מצב התקנה לכל ספר, פרקים חסרים ופגומים |
-| `components/admin/KjvPlusInstaller.jsx` | התקנת KJV+ | מצב התקנה, התקדמות, כיסוי פרקים, מילון Strong’s ודוח ביקורת |
-| `components/admin/LugandaInstaller.jsx` | התקנת לוגנדה | מצב התקנה, התקדמות, כיסוי 1,189 פרקים |
-| `components/admin/LibraryReport.jsx` | אימות כללי הספרייה | השוואת תרגומים, פרקים שבורים, התאמת מספר פסוקים ו-Strong’s |
+| `components/common/EmptyState.jsx` | מצב ריק אחיד | אייקון, כותרת, תיאור ו־action |
+| `components/common/Modal.jsx` | מודאל כללי | כותרת, תת־כותרת, תוכן, footer, סגירה ב־Escape ונעילת גלילת body |
+| `components/common/PageHeader.jsx` | header אחיד לעמודים | גרסת hero עם תמונה או גרסת section פשוטה |
+| `components/common/Pagination.jsx` | מפהח עמודים | קיצורי טווח עם אליפס וניווט קודם/הבא |
+| `components/common/ShareRow.jsx` | כפתורי שיתוף | Facebook, WhatsApp, Telegram, Instagram, LinkedIn ו־Copy |
+| `components/common/Spinner.jsx` | מצב טעינה | spinner עם `role="status"` ו־`aria-live` |
 
-## 4.3 רכיבים כלליים
+### 4.4 רכיבי קהילה, דשבורד ותוכן
 
-| קובץ | תפקיד | מה מרנדר |
+| קובץ | אחריות | מה מרונדר |
 |---|---|---|
-| `components/common/EmptyState.jsx` | מצב ריק | אייקון, כותרת, תיאור ופעולה |
-| `components/common/Modal.jsx` | חלון דיאלוג | overlay, כותרת, תוכן, footer, סגירה ב-Escape |
-| `components/common/PageHeader.jsx` | כותרת דף | גרסת hero או רגילה |
-| `components/common/Pagination.jsx` | עימוד | עמודים קודמים/הבאים וקיצורי range |
-| `components/common/ShareRow.jsx` | שורת שיתוף | כפתורי Facebook, WhatsApp, Telegram, Instagram, LinkedIn ו-Copy |
-| `components/common/Spinner.jsx` | מצב טעינה | ספינר עם נגישות `role=status` |
-
-## 4.4 רכיבי קהילה
-
-| קובץ | תפקיד | מה מרנדר |
-|---|---|---|
-| `components/community/CommentThread.jsx` | שרשור תגובות | תגובות קיימות וטופס תגובה למשתמש מחובר |
-| `components/community/RevelationCard.jsx` | כרטיס גילוי | מחבר, פסוק, כותרת, גוף, לייק ותגובות |
-| `components/community/RevelationForm.jsx` | פרסום גילוי | טופס כותרת, פסוק וגוף |
-| `components/community/ThreadMessages.jsx` | שיחת קבוצה | הודעות וטופס שליחה |
-
-## 4.5 רכיבי קריאה
-
-| קובץ | תפקיד | מה מרנדר |
-|---|---|---|
-| `components/read/AnnotatedText.jsx` | טקסט ניתן לסימון | בחירת טקסט, הילייט/קו תחתון, מחיקת סימון |
-| `components/read/BookGrid.jsx` | רשת ספרים | חיפוש ולשוניות מקרא |
-| `components/read/BookIntro.jsx` | מבוא לספר | עובדות ספר, מבוא, מקראי מפתח וסימונים |
-| `components/read/BookOutline.jsx` | מתווה ספר | כותרות וטווחי פסוקים הניתנים לפתיחה ולסימון |
-| `components/read/BookPrayerPanel.jsx` | תפילת ספר | תפילה באנגלית/לוגנדה, קישורי מקרא וסימונים |
-| `components/read/BookSidebar.jsx` | מעטפת מחקר הספר | החלפה בין Intro, Outline ו-Prayer |
-| `components/read/BookStudyResources.jsx` | חומרי לימוד ספר | פירוש, תובנה תיאולוגית והיסטורית עם עימוד |
-| `components/read/ChapterClosingPrayer.jsx` | תפילת סיום פרק | תפילה, מקרא, שיתוף וחזרה לתפילת הספר |
-| `components/read/ChapterGrid.jsx` | רשת פרקים | קישור לכל פרק |
-| `components/read/ChapterReaderPane.jsx` | עמודת הקריאה | תפריט מחקר, לשוניות, מצב רחב/צר |
-| `components/read/ChapterResourcesPanel.jsx` | משאבי פרק | תובנות תיאולוגיות והיסטוריות ופתיחת מקרא |
-| `components/read/ChapterSelector.jsx` | מסך בחירת ספר | Sidebar, רשת פרקים, חומרי לימוד ו-VersePopup |
-| `components/read/ChapterSidebar.jsx` | מחקר לצד פרק | מבוא, פרשה ותפילה מקוצרת |
-| `components/read/FloatingVerse.jsx` | חלונית פסוק צף | פסוק, סגירה ומעבר ל-Bible Reader |
-| `components/read/PassagePrayer.jsx` | תפילה לפי פסוק | התאמת `scripture_ref` לפרק/פסוק |
-| `components/read/PassageTabs.jsx` | משאבי פסוק | פרשה, תובנות ו-Q&A |
-| `components/read/ShareSheet.jsx` | שיתוף פסוק | מודאל, ערוצי שיתוף, העתקת הכול |
-| `components/read/StrongsPopup.jsx` | מילון Strong’s | הגדרה, מקור, offline ושמירה מקומית |
-| `components/read/StrongsText.jsx` | עיבוד קודי Strong’s | הפיכת `(G2424)` ל-superscript אינטראקטיבי |
-| `components/read/VerseActionBar.jsx` | פעולות פסוק | תפילה, הערה, פרשה, הילייט, סימון, העתקה ושיתוף |
-| `components/read/VerseList.jsx` | רשימת פסוקים קלה | בחירת פסוק וסימון |
-| `components/read/VersePopup.jsx` | קריאת פסוק בחלון | שואב פרק מהשרת ומציג פסוקים מתויגים |
-| `components/read/VersionPicker.jsx` | בחירת תרגום | תרגומים מותקנים, התקנה, הסרה והחלפה |
-
-## 4.6 רכיבי layout, dashboard, insight ו-plan
-
-| קובץ | תפקיד | מה מרנדר |
-|---|---|---|
-| `components/layout/AppFooter.jsx` | פוטר | לוגו, קישורים, תמיכה וקישורי תורמים |
-| `components/layout/AppHeader.jsx` | Header רספונסיבי | ניווט ראשי/משני, התחברות, התקנה ותפריט מובייל |
-| `components/layout/GlobalPlayer.jsx` | נגן אודיו גלובלי | נגן מקומי, queue, עכבה, seek, עוצמה, מהירות ו-repeat |
-| `components/layout/PwaHead.jsx` | PWA head | meta tags, manifest, icons ורישום service worker |
-| `components/dashboard/ActivityFeed.jsx` | פיד פעילות | אירועי קריאה אחרונים עם אייקונים וקישורים |
-| `components/home/StatCard.jsx` | כרטיס מדד | אייקון, ערך, label ו-hint |
-| `components/insight/InsightsBoard.jsx` | לוח תובנות | חיפוש, מיון, פתיחת פריט, שמירה ושיתוף |
-| `components/journal/JournalCard.jsx` | כרטיס יומן | קטגוריה, כותרת, גוף, תאריך, עריכה ומחיקה |
+| `components/community/CommentThread.jsx` | רשימת תגובות וטופס תגובה | תגובות מסוננות ב־`safeText`, כפתורי לייק ושליחה |
+| `components/community/RevelationCard.jsx` | כרטיס חשיפה | מחבר, פסוק, כותרת, גוף, לייקים ותגובות |
+| `components/community/RevelationForm.jsx` | יצירת חשיפה | טופס מחובר/לא מחובר, אימות שדות וניקוי לאחר הצלחה |
+| `components/community/ThreadMessages.jsx` | הודעות בקבוצת דיבור | רשימת הודעות וטופס שליחה |
+| `components/dashboard/ActivityFeed.jsx` | פיד פעילות קריאה | 12 פעילויות אחרונות, polling כל 30 שניות |
+| `components/home/StatCard.jsx` | כרטיס מדד | label, value, hint ואייקון |
+| `components/insight/InsightsBoard.jsx` | לוח תובניות | מיזוג live/seed, חיפוש, מודאל, שיתוף ושמירה מקומית |
+| `components/journal/JournalCard.jsx` | כרטיס רשומת יומן | קטגוריה, כותרת, גוף, תאריך, עריכה ומחיקה |
 | `components/journal/JournalForm.jsx` | טופס יומן | כותרת, גוף, קטגוריה, ספר ופרק |
-| `components/plan/PlanRow.jsx` | שורת תוכנית | יום, סטטוס, נושא, פסוק וקישור לפרק |
+| `components/plan/PlanRow.jsx` | שורת יום בתוכנית | מצב completed/current/upcoming וקישור לפרק |
 
-## 4.7 קבצי עזר ראשיים
+### 4.5 רכיבי Layout
 
-| קובץ | תפקיד |
-|---|---|
-| `lib/activity.js` | הגדרת סוגי פעילות ורישום activity |
-| `lib/adminSession.js` | שמירת token מנהל וקריאה ל-`adminAuth` |
-| `lib/app-params.js` | פרמטרי FSe2 |
-| `lib/AuthContext.jsx` | Provider של מצב המשתמש |
-| `lib/bibleApi.js` | טעינת פרק, fallback לרשת ולמקור מקומי |
-| `lib/bibleBooks.js` | 66 ספרים, שמות, קיצורים ומספרי פרקים |
-| `lib/bookGuides.js` | מבואות ומתוויות לכל ספר |
-| `lib/bookPrayers.js` | תפילות לכל ספר |
-| `lib/bookStudyContent.js` | חומרי לימוד fallback לכל ספר |
-| `lib/brandCss.js` | מערכת CSS מרכזית ומשתני עיצוב |
-| `lib/chapterStudy.js` | חיבור חומרי ספר לחומרי פרק |
-| `lib/contentApi.js` | גישה לאוספי תוכן ציבוריים ופעולות submission |
-| `lib/crossRefs.js` | קשרי מקרא מערכים |
-| `lib/format.js` | עיצוב והגנת טקסט |
-| `lib/keyPassages.js` | מקראי מפתח לכל ספר |
-| `lib/luganda.js` | פורמט תוכן יומי בלוגנדה |
-| `lib/offlineDb.js` | IndexedDB וכל הסטורים המקומיים |
-| `lib/planData.js` | תוכנית 30 הימים כ-fallback |
-| `lib/player.jsx` | Provider ומנוע הנגן הגלובלי |
-| `lib/reading.js` | תאריכים, streak ועזרי לוח |
-| `lib/readings.js` | שמירת התקדמות קריאה ומיפוי לתוכנית |
-| `lib/scriptureRefs.js` | פענוח הפניות מקרא |
-| `lib/seedContent.js` | ספריית תוכן מקומית |
-| `lib/share.js` | בניית קישורי שיתוף והעתקה |
-| `lib/strongs.js` | נרמול ועיבוד קודי Strong’s |
-| `lib/strongsOffline.js` | אחסון הגדרות Strong’s במכשיר |
-| `lib/studyAnnotations.js` | שמירת הילייטים והקווים התחתונים |
-| `lib/textSelection.js` | זיהוי בחירת טקסט בתוך רכיב |
-| `lib/theme.js` | קבועי מותג וקבצי לוגו |
-| `lib/themeContext.jsx` | עדכון צבעי האתר מהניהול |
-| `lib/versions.js` | הגדרת תרגומים והתקנות מקומיות |
+| קובץ | אחריות | מה מרונדר |
+|---|---|---|
+| `components/layout/AppHeader.jsx` | header רספונסיבי | לוגו, ניווט ראשי ומשני, התחברות, משתמש, donate ותפריט נייד |
+| `components/layout/AppFooter.jsx` | footer וקישורים מהירים | לוגו עם fallback, קישורי ספריות, תרומה ומידע משפטי |
+| `components/layout/GlobalPlayer.jsx` | נגן אודיו גלובלי | mini player ו־expanded sheet, seek, volume, speed, shuffle ו־repeat |
+| `components/layout/PwaHead.jsx` | רישום metadata ו־service worker | meta tags, manifest, icons, Apple touch icon ו־SW registration |
+| `Layout.jsx` | מעטפת האפליקציה | `AuthProvider`, `ThemeProvider`, `PlayerProvider`, Header, main, Footer ו־GlobalPlayer |
 
-## 4.8 שרותי צד שרת
+### 4.6 רכיבי הקורא
 
-| קובץ | תפקיד |
-|---|---|
-| `functions/adminAuth.js` | התחברות מנהל, אימות סיסמה, session והחלפת סיסמה |
-| `functions/adminContent.js` | CRUD מאומת עבור תוכן במרכז הניהול |
-| `functions/bibleChapter.js` | השגת פרק ממקורות חיצוניים וניקוי טקסט |
-| `functions/content.js` | API ציבורי לקריאת תוכן וקבלת הגשות |
-| `functions/kjvInstall.js` | התקנת KJV+ לפי פרק |
-| `functions/lugandaInstall.js` | התקנת המקרא בלוגנדה לפי פרק |
-| `functions/scriptureAudit.js` | ביקורת קריאה בלבד על כל המקרא |
-| `functions/strongsDefinition.js` | מילוי מאגר הגדרות Strong’s |
-| `cron/scriptureInstall.js` | משימת cron שעתית להשלמת המקרא |
+| קובץ | אחריות | מה מרונדר |
+|---|---|---|
+| `components/read/AnnotatedText.jsx` | טקסט עם הדגשה וקו תחתון | בחירת טקסט, חלונית צבעים, segments לפי offsets ו־inline nodes |
+| `components/read/BookGrid.jsx` | רשת ספרים | חיפוש, החלפת ברית וגלילה למקום |
+| `components/read/BookIntro.jsx` | מבוא לספר | עובדת ספר, טקסט מסומן ומקרי מפתח |
+| `components/read/BookOutline.jsx` | מתאר הספר | כותרות, טווחי פסוקים ובחירת מקטע |
+| `components/read/BookPrayerPanel.jsx` | תפילת הספר | החלפת אנגלית/לוגנדה, הפניות inline ותפילות קשורות |
+| `components/read/BookSidebar.jsx` | חלונית הספר | מבוא, מתאר ותפילה, עם tabs נגישים |
+| `components/read/BookStudyResources.jsx` | משאבי לימוד ברמת הספר | פירוש, תובנה תאולוגית והיסטורית, pagination ו־fallback |
+| `components/read/ChapterClosingPrayer.jsx` | תפילת סיום הפרק | תפילה מלאה, סימון שפה, הפניה, share וכפתור תפילה חוזרת |
+| `components/read/ChapterGrid.jsx` | רשת פרקים | אריח לכל פרק עם מצב נבחר |
+| `components/read/ChapterReaderPane.jsx` | מעטפת עמוד הפרק | תפריט מחקר, tabs, panel רספונסיבי ו־wide-screen layout |
+| `components/read/ChapterResourcesPanel.jsx` | תובניות הפרק | תובניה תאולוגית/היסטורית, fallback לרמת הספר וטקסט מסומן |
+| `components/read/ChapterSelector.jsx` | בורא המסך של מספר הספרים | הזכרון של הספר, sidebar, grid, משאבים ו־VersePopup |
+| `components/read/ChapterSidebar.jsx` | מחקר לצד פרק | מבוא, פירוש, תפילה והפניות |
+| `components/read/CrossRefList.jsx` | הפניות לפסוק | הפניות ישירות והפניות אחרות באותו פרק, עם טקסט והערה |
+| `components/read/FloatingVerse.jsx` | חלונית פסוק צפה | פסוק, סגירה וקישור למקום מלא בקורא |
+| `components/read/PassagePrayer.jsx` | תפילה המתאימה לפסוק | התאמת reference, בחירת שפה, הדגשות ופתיחת הפניה |
+| `components/read/PassageTabs.jsx` | פירוש ותובניות לפסוק | Commentary, theological, historical ו־Q&A |
+| `components/read/ShareSheet.jsx` | גיליון שיתוף | חלקי הטקסט, העתקה מלאה ורשתות חברתיות |
+| `components/read/StrongsPopup.jsx` | מילון Strong’s | הגדרה, מקור, מצב טעינה ושמירה offline |
+| `components/read/StrongsText.jsx` | הצגת קודי Strong’s | הפרדת קודי G/H מהפסוק והצגתם כ־superscript אינטראקטיבי |
+| `components/read/VerseActionBar.jsx` | פעולות פסוק | תפילה, הפניות, פירוש, highlight, bookmark, note, share ו־copy |
+| `components/read/VerseList.jsx` | רשימת פסוקים בסגנון פשוט | בחירת פסוק והדגשת מספרו |
+| `components/read/VersePopup.jsx` | קריאת פסוק בתוך העמוד | טעינת פרק, בחירת טווח, הדגשות ופתיחת מקור |
+| `components/read/VersionPicker.jsx` | התקנה והחלפת תרגום | בחירת גרסה, התקנה, uninstall ו־active version |
 
-## 4.9 Entities
+### 4.7 ספריות `lib/`
 
 | קובץ | תפקיד |
 |---|---|
-| `entities/ActivityLog.json` | יומן פעילות מנהל |
-| `entities/AdminAccount.json` | חשבון מנהל תוכן |
-| `entities/BibleVerse.json` | פסוק מקרא דו-לשוני |
-| `entities/Commentary.json` | הערת פרשה לפי ספר ופרק |
-| `entities/ContactMessage.json` | הודעת פנייה מהציבור |
-| `entities/Devotional.json` | תוכן יומי דו-לשוני |
-| `entities/DevotionalProgress.json` | סימון תוכן יומי כהושלם |
-| `entities/DiscussionGroup.json` | קבוצת לימוד |
-| `entities/DiscussionThread.json` | הודעה בקבוצת לימוד |
-| `entities/Insight.json` | תובנה תיאולוגית או היסטורית |
-| `entities/JournalEntry.json` | רשומת יומן תפילה |
-| `entities/KjvPlusChapter.json` | פרק KJV+ עם קודי Strong’s |
-| `entities/LiveSession.json` | מפגש לימוד חי |
-| `entities/LugandaChapter.json` | פרק מקרא בלוגנדה |
-| `entities/Prayer.json` | תפילה מהספרייה |
-| `entities/PrayerSaved.json` | תפילה שנשמרה על ידי קורא |
-| `entities/QAEntry.json` | שאלה ותשובה |
-| `entities/ReadingActivity.json` | אירוע פעילות קריאה |
-| `entities/Reading.json` | פרק שהושלם, reflection ו-prayer point |
-| `entities/ReadingPlan.json` | תוכנית הקריאה |
-| `entities/Revelation.json` | גילוי קהילתי ותגובותיו כרשומות צאצא |
-| `entities/SiteSettings.json` | הגדרות גלובליות וערכי מותג |
-| `entities/StrongEntry.json` | הגדרת Strong’s |
-| `entities/StudyAnnotation.json` | הילייט או קו תחתון בחומר לימוד |
-| `entities/StudyMark.json` | הילייט, ספסר או הערה בפסוק |
-| `entities/VerseOfDay.json` | פסוק יומי |
-| `entities/VerseSongEpisode.json` | רצועה בסדרת Verse-Song |
-| `entities/VerseSongSeries.json` | סדרת Verse-Song |
+| `lib/activity.js` | רישום פעילות קורא בצורה עמידה שאינה מפרקת את המסך |
+| `lib/adminCollections.js` | מטא־נתונים של אוספי הניהול, שדות ועזרי יצירת רשומה |
+| `lib/adminDirect.js` | הטמעת API ניהול ישיר דרך entity SDK כחלופה ל־function gateway |
+| `lib/adminSession.js` | ניהול session מנהל, token, חידוש ומעבר בין server mode ל־direct mode |
+| `lib/app-params.js` | קריאת app id ו־token בזמן אמת מ־`localStorage` |
+| `lib/AuthContext.jsx` | הצטברות מצב המשתמש הרגיל ופעולות login/logout |
+| `lib/bibleApi.js` | טעינת פרקים, בחירת מקור, timeout, offline fallback ו־Strong markers |
+| `lib/bibleBooks.js` | נתוני 66 הספרים: מספר, שם, קיצור, לוגנדה ומספר פרקים |
+| `lib/bookGuides.js` | מבוא ומתאר לכל ספר |
+| `lib/bookPrayers.js` | תפילה לכל ספר בשתי שפות |
+| `lib/bookStudyContent.js` | תוכן לימוד בסיסי לכל ספר |
+| `lib/brandCss.js` | מערכת CSS מרכזית ומשתני המותג |
+| `lib/chapterStudy.js` | בניית מבוא, פירוש, תפילה והפניות לפרק מתוך מקורות מגוונים |
+| `lib/contentApi.js` | מתאם אחיד לקריאת אוספים ציבוריים והגשת תוכן |
+| `lib/crossRefs.js` | הפניות מוכרות הממוקדות ב־פסוקים פופולריים |
+| `lib/format.js` | עיצוב טקסט, תאריכים, משכים, רשימות ו־safe text |
+| `lib/keyPassages.js` | פסוקי מפתח לכל ספר |
+| `lib/luganda.js` | פיצול וניקוי תוכניות לוגנדה |
+| `lib/offlineDb.js` | מעטפת IndexedDB, stores, migration וגיבוי מקומי |
+| `lib/planData.js` | תוכנית fallback של 30 יום |
+| `lib/player.jsx` | queue ו־Audio element גלובליים |
+| `lib/prayerImport.js` | template, validation ו־import של קובצי תפילות לפי ספר |
+| `lib/prayerPassages.js` | מפתחות טבעיים, איחוד, התאמת פסוקים והפניות לפרק |
+| `lib/reading.js` | חישוב תאריכים, ימים ו־streaks |
+| `lib/readings.js` | שמירת התקדמות קריאה וסגירת יום בתוכנית |
+| `lib/scriptureRefs.js` | parsing ו־resolution של הפניות תנ"ך |
+| `lib/seedContent.js` | תוכן seed לתוכניות, תפילות, תובניות, קהילה ושירים |
+| `lib/sha256.js` | מימוש SHA-256 נייד לבדיקת hash בדפדפן |
+| `lib/share.js` | בניית קישורי שיתוף והעתקת טקסט |
+| `lib/strongs.js` | נרמול קודי Strong’s ועזרי תצוגה/מקור |
+| `lib/strongsOffline.js` | קריאה וכתיבה של הגדרות Strong’s במכשיר |
+| `lib/studyAnnotations.js` | merge, save ו־remove של הדגשות/קווי תחתון |
+| `lib/textSelection.js` | זיהוי אם הקליק התרחש בתוך טקסט שנבחר |
+| `lib/themeContext.jsx` | טעינת `SiteSettings` והפקת גוונים מבוססים |
+| `lib/theme.js` | קבועי מותג, לוגו, favicon, תמונות hero וקישורי תרומה |
+| `lib/versions.js` | הגדרת תרגומים, התקנת גרסה ו־active version |
 
-## 4.10 PWA ונכסים
+### 4.8 קבצי backend
 
 | קובץ | תפקיד |
 |---|---|
-| `public/manifest.json` | הגדרת PWA, שם, צבעים, תצוגה ואייקונים |
-| `public/sw.js` | Service worker; cache-first ל-shell ולתמונות, network-first לנתונים |
-| `public/assets/...` | תמונות, לוגו, PDF, ZIP ונכסים סטטיים |
-| `__generated/tailwind.css` | CSS Tailwind מחושלל לשימושי עזר |
+| `functions/adminAuth.js` | כניסת מנהל, hash סיסמה, session token, חידוש, ביטול ואיפוס |
+| `functions/adminContent.js` | API ניהול תוכן מוגן לפי session token |
+| `functions/bibleChapter.js` | הפעלת מקורות חיצוניים לפרק אנגלי או לוגנדה |
+| `functions/content.js` | קריאת אוספים ציבוריים וקבלת הגשות ציבוריות |
+| `functions/kjvInstall.js` | התקנת פרקי KJV+ עם Strong’s |
+| `functions/lugandaInstall.js` | התקנת פרקי התנ"ך לוגנדה |
+| `functions/scriptureAudit.js` | ביקורת לקריאה בלבד של כיסוי ואיכות הספרייה |
+| `functions/strongsDefinition.js` | מילון Strong’s מקומי ומילוי מקוונות מהמקורות הציבוריים |
+| `cron/scriptureInstall.js` | worker שעובר כל שעה ומשלים פרקים חסרים |
+| `public/sw.js` | service worker: cache-first ל־shell/תמונות ו־network-first לנתונים |
+| `public/manifest.json` | manifest של PWA, צבעים, icons ו־start URL |
 
-## 4.11 קבצי `__trash`
+### 4.9 קבצים שאינם מופיעים בקוד שסופק
 
-תיקיית `__trash` כוללת גרסאות קוד ישנות, probes וכלי אבחון, לדוגמה:
+שני קבצים מרכזיים מופנים אך אינם נמצאים ברשימת המקור:
 
-- `__trash/pages/Read.jsx`
-- `__trash/components/read/BookPicker.jsx`
-- `__trash/components/read/ReflectionPanel.jsx`
-- `__trash/functions/probeChapter.js`
-- `__trash/functions/probeSources.js`
+- `api/fse2Client.js`  -  כנראה wrapper מרכזי סביב ה־FSe2 SDK.
+- `utils.js` או קובץ דומה  -  מספק `createPageUrl()`.
 
-אין לראות בהם חלק מהמסלול הפעיל לפני שמוודאים שאין להם ייבואים. הם עשויים להיות שאריות ארכיון ולא תואמים את מבנה ה-React הנוכחי.
+יישום שינוי בנתיבים או בהרשאות יכול להשפיע על שניהם.
 
----
+### 4.10 קבצי נכסים וקבצים שנוצרו אוטומטית
 
-# 5. מודל הנתונים
+- `__generated/tailwind.css`  -  CSS Tailwind מצומצם שנוצר אוטומטית. אין לערוך אותו ידנית; יש לשנות את מקור ה־Tailwind ולבנות מחדש.
+- `public/assets/generated_*.png`  -  תמונות גנריות בשמות hash:
+  - `generated_022a23b6.png`
+  - `generated_0f91fdf8.png`
+  - `generated_5fe46b6c.png`
+  - `generated_703e129d.png`
+  - `generated_8b82ca52.png`
+  - `generated_a74541e8.png`
+  - `generated_aa744f7a.png`
+  - `generated_c990bd6c.png`
+  - `generated_f0778e1c.png`
+- `public/assets/ingested/media_0fc9eec909.png`
+- `public/assets/ingested/media_7a14bfc357.xicon`
+- `public/assets/media-library/`  -  נכסי מדיה, לוגו, favicon, template ומסמכי עזרה. הקבצים המוזהרים במפורש:
+  - `0dbaf742d3ba_Prayer-Crossrefs-Template.json`
+  - `5754e40e4a9f_Finestructure-Prompt-Prayer-CrossRefs-Bulk-Import.md`
+  - `9865967db356_Pray-Read-Bible-Prompt-3-Bible-Reader-Rebuild.pdf`
+  - `b50e6c213bb8_pray-read-pneuma-main-3.zip`
+  - `b8660c2286d0_PrayRead-logo-2.png`
+  - `ee6ae196bbbc_favicon.ico`
+  - `f438ed2a3a0d_Pray-Read-Bible-Master-Prompt-For-Finestructure-Ai.pdf`
+  - `f4ad877aa93e_WhatsApp-Image-2026-11-23-at-4-49-46-PM.jpeg`
+  - `f830b722d892_OBADIAH-PRAY-READ-BULK-IMPORT.json`
+  - `4345fa1c4c79_icon-512x512.png`
+  - שאר קבצי `*_image.png` הם תמונות cover/דמו שאינן ממופים בקובץ מרכזי; יש לאתר את השימוש בהם לפני שינוי שם או מחיקה.
 
-## 5.1 `ActivityLog`
+### 4.11 `__trash/` ו־`__url_fetch/`
 
-**מטרה:** לשמור פעולות של מנהלי תוכן.
+`__trash/` כולל גרסאות קוד ישנות, דפי בדיקה ו־probe files. למשל:
 
-**שדות:**
+- `components/home/TodayCard.jsx`
+- `components/home/WeekStrip.jsx`
+- `components/layout/Sidebar.jsx`
+- `components/layout/SignInBanner.jsx`
+- `components/read/BookPicker.jsx`
+- `components/read/ReflectionPanel.jsx`
+- `pages/Read.jsx`
+- `pages/Insights.jsx`
+- `pages/AdminDiag.jsx`
+- `pages/AdminSmoke.jsx`
+- `pages/ImportPreview.jsx`
+- `pages/InstallerCheck.jsx`
+- `pages/StrongsPopupTest.jsx`
+- `functions/adminProbe.js`
+- `functions/probeChapter.js`
+- `functions/probeSources.js`
+- `functions/tmpAuthProbe.js`
+- `functions/tmpSessionProbe.js`
 
-- `actor`  -  המנהל שביצע את הפעולה.
-- `action`  -  סוג הפעולה.
-- `section`  -  אזור ב-CMS.
-- `detail`  -  פרטים נוספים.
+`__url_fetch/` מכיל snapshots של:
 
-**הרשאות:** קריאה וכתיבה ל־owner/admin.
+- Bible API.
+- Wordplanet.
+- Bolls.
+- Blue Letter Bible.
+- Open Scriptures.
+- Fine Structure.
+- מסמכי PDF/ZIP ו־HTML ששימשו למחקר.
 
----
-
-## 5.2 `AdminAccount`
-
-**מטרה:** הפרטים של מנהלי תוכן.
-
-**שדות:**
-
-- `email`  -  מזהה מנהל, חובה.
-- `password_hash`  -  hash מלוח של הסיסמה.
-- `salt`  -  salt ייחודי.
-- `updated_date`  -  תאריך עדכון.
-
-**הרשאות:** owner/admin בלבד.
-
-**הערה אבטחה:** הקוד המקומי מגדיר סיסמת ברירת מחדל קבועה בסביבת שרת. יש להבטיח שבפרודקשן `ADMIN_INITIAL_PASSWORD` מוגדר באופן חסרי וידוי, ולא להשאיר את ברירת המחדל.
-
----
-
-## 5.3 `BibleVerse`
-
-**מטרה:** לשמור פסוקים באנגלית ולוגנדה.
-
-**שדות:**
-
-- `book_number`  -  מספר הספר הקנוני.
-- `book`  -  שם הספר.
-- `chapter`  -  מספר פרק.
-- `verse`  -  מספר פסוק.
-- `text_en`  -  טקסט אנגלי.
-- `text_lu`  -  טקסט לוגנדה.
-
-**הרשאות:** קריאה ציבורית; כתיבת owner/admin.
-
-**קשרים:** מזוהה לפי המפתח הלוגי `book_number + chapter + verse`.
-
----
-
-## 5.4 `Commentary`
-
-**מטרה:** הערת פרשה המשויכת לספר ולפרק.
-
-**שדות:**
-
-- `book`  -  שם הספר, חובה.
-- `chapter`  -  מספר פרק.
-- `title`.
-- `body_en`.
-- `body_lu`.
-
-**קשרים:** משמש את `PassageTabs` ו-`ChapterSidebar`.
+הקבצים אינם חלק מ־bundle או מ־service worker, אך הם מגדילים את מאגר המקור ועלולים לחשוף מידע מחקר או נכסים לא רלוונטיים. מומלץ להעביר אותם למאגר חיצוני או לנקות אותם לפני release.
 
 ---
 
-## 5.5 `ContactMessage`
+## 5. מודל הנתונים  -  Entities
 
-**מטרה:** פנייה מהציבור.
+### 5.1 עקרונות המודל
 
-**שדות:**
+- רוב ה־entities מוגדרים ב־`entities/*.json`.
+- אין בקוד שראלה Foreign Key מפורש; הקשרים נשמרים באמצעות:
+  - `owner_email`
+  - `book_number`
+  - `chapter`
+  - `verse`
+  - `devotional_code`
+  - `prayer_title`
+  - `group_name`
+  - `parent_id`
+- ה־ACL נמצא ב־`x-fse2-access`.
+- התפקידים:
+  - `"*"`  -  קריאה ציבורית.
+  - `owner`, `admin`  -  ניהול.
+  - `user`, `authenticated`  -  פעולות משתמש מחובר.
+- חלק מה־entities החדשים משתמשים בפורמט policy מסוג `version: 2`.
 
-- `name`  -  חובה.
-- `email`  -  חובה.
-- `subject`.
-- `message`.
-- `is_read`.
-- `reply`  -  תשובת הצוות.
+### 5.2 ישויות ניהול ופעילות
 
-**הרשאות:** כל גולש יכול ליצור; רק מנהלים קוראים ומענים.
+#### `ActivityLog`
 
----
+- **מטרה:** יומן פעולות בממשק הניהול.
+- **שדות:** `actor`, `action`, `section`, `detail`.
+- **קשרים:** ללא קשר ישיר; מתעד את הפעולה בטקסט ובמטא־נתונים.
+- **הרשאות:** קריאה וכתיבה רק ל־owner/admin.
 
-## 5.6 `Devotional`
+#### `AdminAccount`
 
-**מטרה:** תוכן יומי דו-לשוני.
+- **מטרה:** זהות נפרדת למנהל תוכן.
+- **שדות:** `email`, `password_hash`, `salt`, `secret`, `session_version`, `updated_date`.
+- **קשרים:** משמש את `adminAuth`, `adminContent` ו־session tokens.
+- **הרשאות:** owner/admin בלבד.
+- **הערה:** שדות `secret`, `salt` ו־`password_hash` הם רגישים ואינם אמורים להופיע בלוגים או בתשובות API.
 
-**שדות מרכזיים:**
+### 5.3 תוכן ציבורי
 
-- `code`  -  מזהה ייחודי, חובה.
-- `title`, `title_lu`.
-- `scripture`, `scripture_lu`.
-- `body`, `body_lu`.
-- `related`.
-- `further_readings`.
-- `cover_image`.
+#### `BibleVerse`
 
-**קשרים:**
+- **מטרה:** פסוק בודד באנגלית ובלוגנדה.
+- **שדות מרכזיים:** `book_number`, `book`, `chapter`, `verse`, `text_en`, `text_lu`.
+- **קשרים:** מזוהה לפי `book_number + chapter + verse`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-- `DevotionalProgress.devotional_code` מפנה אליו.
-- תוכן יומי קיים יכול להפנות לפרקים דרך הפניות מקרא.
+#### `Commentary`
 
----
+- **מטרה:** פירוש רמת פרק.
+- **שדות:** `book`, `chapter`, `title`, `body_en`, `body_lu`.
+- **קשרים:** לספר לפי שם/מספר ולפרק.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-## 5.7 `DevotionalProgress`
+#### `ContactMessage`
 
-**מטרה:** לשמור איזה תוכן יומי הושלם על ידי קורא.
+- **מטרה:** פנייה שנשלחה מטופס Contact.
+- **שדות:** `name`, `email`, `subject`, `message`, `is_read`, `reply`.
+- **קשרים:** ניהול תשובה ידני על ידי admin.
+- **הרשאות:** כל גורם יכול ליצור; רק admin יכול לקרוא, לעדכן או למחוק.
 
-**שדות:**
+#### `CrossReference`
 
-- `owner_email`  -  בעל ההתקדמות, חובה.
-- `devotional_code`  -  קוד התוכן, חובה.
-- `completed_date`.
+- **מטרה:** הפניה מפסוק אחד לפסוק אחר.
+- **שדות מקור:** `book_number`, `chapter`, `verse`.
+- **שדות יעד:** `ref_book_number`, `ref_chapter`, `ref_verse`.
+- **שדות תצוגה:** טקסט והערה בעברית ובלוגנדה, כגון `ref_text_en`, `ref_text_lu`, `note_en`, `note_lu`.
+- **קשרים:** מקור ויעד שניהם מקביעים לפי מספר ספר/פרק/פסוק.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-**קשרים:** לוגית ל-`Devotional.code`.
+#### `Devotional`
 
----
+- **מטרה:** תוכנית יומית דו־לשונית.
+- **שדות מרכזיים:** `code`, `title`, `title_lu`, `scripture`, `scripture_lu`, `body`, `body_lu`, `related`, `further_readings`, `cover_image`, `category`.
+- **קשרים:** `code` מקשר ל־`DevotionalProgress`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-## 5.8 `DiscussionGroup`
+#### `DiscussionGroup`
 
-**מטרה:** קבוצה שבה קוראים לומדים מקרא יחד.
+- **מטרה:** קבוצת לימוד קהילתית.
+- **שדות:** `name`, `description`, `schedule`, `member_count`.
+- **קשרים:** `DiscussionThread.group_name` מקשר אל `name`.
+- **הרשאות:** קריאה ציגורית; כתיבת admin.
 
-**שדות:**
+#### `DiscussionThread`
 
-- `name`  -  חובה.
-- `description`.
-- `schedule`.
-- `member_count`.
+- **מטרה:** הודעה בקבוצת דיבור.
+- **שדות:** `group_name`, `owner_email`, `author_name`, `title`, `body`.
+- **קשרים:** לקבוצה לפי `group_name`; למשתמש לפי `owner_email`.
+- **הרשאות:** קריאה ציבורית; כתיבה למשתמש מחובר.
 
-**קשרים:**
+#### `Insight`
 
-- `DiscussionThread.group_name` מזהה את הקבוצה.
-- הקשר מבוסס שם ולא `id`, ולכן שינוי שם עלול לנתק הודעות קיימות.
+- **מטרה:** תובנה תאולוגית או היסטורית.
+- **שדות:** `kind`, `title`, `passage`, `excerpt`, `body`, `share_count`.
+- **קשרים:** `kind` אמור להיות `theological` או `historical`; ה־passage הוא טקסט חופשי שנפרש על ידי `scriptureRefs`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
----
+#### `LiveSession`
 
-## 5.9 `DiscussionThread`
+- **מטרה:** מפגש הוראה חי עתידי.
+- **שדות:** `title`, `session_date`, `host`, `join_link`, `description`.
+- **קשרים:** אין קשר FK; משמש התראה/עמוד קהילה.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-**מטרה:** הודעה בתוך קבוצת דיבור.
+#### `Prayer`
 
-**שדות:**
+- **מטרה:** תפילה מספריית תפילות הכללית.
+- **שדות:** `title`, `title_lu`, `category`, `body_en`, `body_lu`, `scripture_ref`, `cross_refs`.
+- **קשרים:** `scripture_ref` מפנה לפסוק; `cross_refs` הוא רשימת הפניות בתוך השדה, לא בהכרח קשר ל־`CrossReference`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-- `group_name`.
-- `owner_email`.
-- `author_name`.
-- `title`.
-- `body`.
+#### `PrayerPassage`
 
-**הרשאות:** כל משתמש מחובר יכול ליצור הודעה; כל גולש יכול לקרוא.
+- **מטרה:** תפילה המשויכת לפרק, טווח פסוקים או פסוק יחיד.
+- **שדות:** `book_number`, `book_name`, `chapter`, `verse`, `verse_end`, `title_en`, `title_lu`, גוף התפילה באנגלית ובלוגנדה ושדה מקור/הפניה.
+- **קשרים:** פסוק `0` מייצג פרק שלם; `verse_end` מגדיר טווח.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
----
+#### `ReadingPlan`
 
-## 5.10 `Insight`
+- **מטרה:** יום בתוכנית הקריאה.
+- **שדות:** `day`, `book`, `chapter`, `title`, `theme`, `focus`, `scripture`.
+- **קשרים:** `day` מקשר ל־`Reading.plan_day`.
+- **הרשאות:** קריאה ציגורית; כתיבת admin.
 
-**מטרה:** תובנה תיאולוגית או היסטורית.
+#### `Revelation`
 
-**שדות:**
+- **מטרה:** חשיפה אישית או תגובה לחשיפה.
+- **שדות:** `owner_email`, `author_name`, `title`, `passage`, `body`, `likes`, `parent_id`.
+- **קשרים:** `parent_id` יוצר קשר עצמי בין חשיפה לתגובות.
+- **הרשאות:** קריאה ציבורית; כתיבה למשתמש מחובר.
 
-- `kind`  -  `theological` או `historical`, חובה.
-- `title`  -  חובה.
-- `passage`.
-- `excerpt`.
-- `body`.
-- `share_count`.
+#### `SiteSettings`
 
-**קשרים:**
+- **מטרה:** הגדרות אתר גלובליות.
+- **שדות:** `setting_key`, `setting_value`.
+- **קשרים:** אין; מפתחות כגון `site_name`, `ivory`, `emerald`, `gold` ו־`donate_url`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-- משמש ב-`InsightsBoard`.
-- משמש ב-`ChapterResourcesPanel`.
-- משמש ב-`BookStudyResources` כ-fallback מול רשומות תוכן.
+#### `VerseOfDay`
 
----
+- **מטרה:** פסוק מומלץ לתאריך מסוים.
+- **שדות:** `verse_date`, `reference`, `text_en`, `text_lu`, `note`.
+- **קשרים:** נבחר לפי תאריך.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-## 5.11 `JournalEntry`
+#### `VerseSongSeries`
 
-**מטרה:** רשומת יומן תפילה אישית.
+- **מטרה:** סדרת Verse-Song.
+- **שדות:** `name`, `description`, `thumbnail`, `cover_image`, `accent`.
+- **קשרים:** `VerseSongEpisode.series_name` מקשר אל `name`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-**שדות:**
+#### `VerseSongEpisode`
 
-- `owner_email`  -  חובה.
-- `entry_date`.
-- `title`.
-- `body`.
-- `category`.
-- `book`.
-- `chapter`.
-- `mood`.
+- **מטרה:** פרק אודיו בתוך סדרת Verse-Song.
+- **שדות:** `series_name`, `title`, `verse_ref`, `duration_label`, `duration_seconds`, `audio_url`, `audio_key`, `thumbnail`, `episode_order`.
+- **קשרים:** לסדרה לפי `series_name`.
+- **הרשאות:** קריאה ציגורית; כתיבת admin.
 
-**קשרים:**
+### 5.4 ישויות תנ"ך מותקנות
 
-- יכול להפנות לספר ופרק במקרא.
-- שייך למשתמש דרך `owner_email`.
+#### `KjvPlusChapter`
 
----
+- **מטרה:** פרק KJV עם סימוני Strong’s.
+- **שדות:** `book_number`, `book`, `chapter`, `verse_count`, `verses`.
+- **`verses`:** מחרוזת JSON המכילה את הפסוקים.
+- **מפתח טבעי:** `book_number + chapter`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-## 5.12 `KjvPlusChapter`
+#### `LugandaChapter`
 
-**מטרה:** פרק KJV+ עם מספרי Strong’s.
+- **מטרה:** פרק תנ"ך בלוגנדה.
+- **שדות:** `book_number`, `book`, `chapter`, `verse_count`, `verses`.
+- **מפתח טבעי:** `book_number + chapter`.
+- **הרשאות:** קריאה ציבורית; כתיבת admin.
 
-**שדות:**
+#### `StrongEntry`
 
-- `book_number`  -  חובה.
-- `book`.
-- `chapter`.
-- `verse_count`.
-- `verses`  -  JSON של פסוקים.
+- **מטרה:** הגדרת מילה לפי קוד Strong’s.
+- **שדות:** `code`, `language`, `original_word`, `transliteration`, `pronunciation`, `part_of_speech`, `root_word`, `definition`, `source`.
+- **קשרים:** `code` מקשר לקוד שמוצג בפסוק.
+- **הרשאות:** הקריאה ציבורית; הכתיבה נעשית דרך cache/function ובהתאם להרשאות ה־entity.
+- **הערה:** ה־code מנורמל, כך ש־`H0436` ו־`H436` מייצגים את אותה מילה.
 
-**הרשאות:** קריאה ציבורית; כתיבת owner/admin.
+### 5.5 ישויות משתמש
 
-**קשרים:** מקביל ל-`LugandaChapter` ול-`BibleVerse`, אך משמש מקור מלא לתרגום KJV+.
+#### `DevotionalProgress`
 
----
+- **מטרה:** סימון תוכנית יומית כהושלמה.
+- **שדות:** `owner_email`, `devotional_code`, `completed_date`.
+- **קשרים:** למשתמש לפי `owner_email`; לתוכנית לפי `devotional_code`.
+- **הרשאות:** משתמש מחובר.
 
-## 5.13 `LiveSession`
+#### `JournalEntry`
 
-**מטרה:** מפגש לימוד חי עתידי.
+- **מטרה:** רשומת יומן תפילה.
+- **שדות:** `owner_email`, `entry_date`, `title`, `body`, `category`, `book`, `chapter`, `mood`.
+- **קשרים:** למשתמש לפי `owner_email`; לספר/פרק דרך שדות לוגיקיים.
+- **הרשאות:** משתמש מחובר.
 
-**שדות:**
+#### `PrayerSaved`
 
-- `title`  -  חובה.
-- `session_date`.
-- `host`.
-- `join_link`.
-- `description`.
+- **מטרה:** תפילה שנשמרה במועדפי המשתמש.
+- **שדות:** `owner_email`, `prayer_title`.
+- **קשרים:** ל־`Prayer.title` לפי כותרת.
+- **הרשאות:** משתמש מחובר.
 
-**קשרים:** אין קשר ישיר; מוצג ב-`CommunityLiveTeaching`.
+#### `Reading`
 
----
+- **מטרה:** התקדמות קריאה של פרק.
+- **שדות:** `owner_email`, `book`, `chapter`, `translation`, `plan_day`, `read_date`, `status`, `reflection`, `prayer_point`, `highlighted_verses`.
+- **קשרים:** `plan_day` מקשר ל־`ReadingPlan.day`.
+- **הרשאות:** משתמש מחובר.
 
-## 5.14 `LugandaChapter`
+#### `ReadingActivity`
 
-**מטרה:** פרק מקרא בלוגנדה.
+- **מטרה:** פעילות קריאה לצורך פיד בדשבורד.
+- **שדות:** `owner_email`, `activity_type`, `book`, `book_number`, `chapter`, `verse`.
+- **סוגי פעילות:** `chapter_visit`, `highlight`, `bookmark`, `note_saved`, `prayer_opened`, `devotional_access`.
+- **קשרים:** למשתמש לפי `owner_email`.
+- **הרשאות:** משתמש מחובר.
 
-**שדות:**
+#### `StudyAnnotation`
 
-- `book_number`  -  חובה.
-- `book`.
-- `chapter`.
-- `verse_count`.
-- `verses`  -  JSON.
+- **מטרה:** הדגשה או קו תחתון במבוא, מתאר, תפילת ספר או פסוק בתוך popup.
+- **שדות:** `owner_email`, `book_number`, `book`, `section`, `block_id`, `kind`, `color`, `start_offset`, `end_offset`.
+- **מפתח טבעי:** ספר + section + block + kind + offsets.
+- **הבדל מ־`StudyMark`:** `StudyAnnotation` הוא annotation רב־טקסטואלי; `StudyMark` הוא פעולה ברמת פסוק.
+- **הרשאות:** משתמש מחובר.
 
-**קשרים:** מקביל ל-`KjvPlusChapter`; נקרא על ידי `bibleApi`.
+#### `StudyMark`
 
----
+- **מטרה:** highlight, bookmark או note ברמת פסוק.
+- **שדות:** `owner_email`, `mark_type`, `book_number`, `book`, `chapter`, `verse`, `color`, `note_text`.
+- **קשרים:** למשתמש לפי `owner_email`; לפרק לפי מספר ספר/פרק/פסוק.
+- **הרשאות:** משתמש מחובר.
 
-## 5.15 `Prayer`
+### 5.6 ישויות קהילה
 
-**מטרה:** תפילה מהספרייה.
+#### `QAEntry`
 
-**שדות:**
+- **מטרה:** שאלת קורא ותשובת הנהלה.
+- **שדות:** `question`, `category`, `answer`, `passage_ref`, `answered_by`, `status`, `author_email`.
+- **קשרים:** `passage_ref` מפנה לפסוק; `author_email` מזהה את השואל.
+- **הרשאות:** קריאה ציבורית; authenticated יכולים ליצור; admin מנהלים את התשובה והסטטוס.
 
-- `title`  -  חובה.
-- `title_lu`.
-- `category`.
-- `body_en`.
-- `body_lu`.
-- `scripture_ref`.
+### 5.7 קשרים מרכזיים בין ישויות
 
-**קשרים:**
-
-- `PrayerSaved.prayer_title` מפנה לפי כותרת.
-- `PassagePrayer` מנסה להתאים את `scripture_ref` לפסוק הפעיל.
-- `BookPrayerPanel` משתמש בהפניות `[[Book 1:1]]`.
-
----
-
-## 5.16 `PrayerSaved`
-
-**מטרה:** לשמור תפילה ברשימת המשתמש.
-
-**שדות:**
-
-- `owner_email`  -  חובה.
-- `prayer_title`  -  חובה.
-
-**קשרים:** לוגית ל-`Prayer.title`.
-
----
-
-## 5.17 `QAEntry`
-
-**מטרה:** שאלת קורא ותשובת הצוות.
-
-**שדות:**
-
-- `question`  -  חובה.
-- `category`.
-- `answer`.
-- `passage_ref`.
-- `answered_by`.
-- `status`.
-- `author_email`.
-
-**הרשאות:** קריאה ציבורית, יצירה על ידי משתמש מחובר, עריכה על ידי מנהל.
-
----
-
-## 5.18 `ReadingActivity`
-
-**מטרה:** אירוע קריאה לצורך הפיד והדשבורד.
-
-**שדות:**
-
-- `owner_email`  -  חובה.
-- `activity_type`  -  חובה.
-- `book`.
-- `book_number`.
-- `chapter`.
-- `verse`.
-
-**סוגי פעילות אפשריים:**
-
-- `chapter_visit`.
-- `highlight`.
-- `bookmark`.
-- `note_saved`.
-- `prayer_opened`.
-- `devotional_access`.
-
-**קשרים:** שייך למשתמש; אינו מהווה היסטוריית קריאה מלאה, אלא פיד אירועים.
-
----
-
-## 5.19 `Reading`
-
-**מטרה:** מצב השלמת פרק ורשומות התעדוק של הקורא.
-
-**שדות:**
-
-- `owner_email`  -  חובה.
-- `book`  -  חובה.
-- `chapter`  -  חובה.
-- `translation`.
-- `plan_day`.
-- `read_date`.
-- `status`.
-- `reflection`.
-- `prayer_point`.
-- `highlighted_verses`.
-
-**קשרים:**
-
-- `plan_day` מתאים ל-`ReadingPlan.day`.
-- משמש לחישוב streak והתקדמות בתוכנית.
-- `highlighted_verses` נשמר כטקסט, לא כ-entity נפרד.
-
----
-
-## 5.20 `ReadingPlan`
-
-**מטרה:** הגדרת תוכנית הקריאה.
-
-**שדות:**
-
-- `day`  -  חובה.
-- `book`  -  חובה.
-- `chapter`  -  חובה.
-- `title`.
-- `theme`.
-- `focus`.
-- `scripture`.
-
-**קשרים:** `Reading.plan_day` מקבל את מספר היום.
-
----
-
-## 5.21 `Revelation`
-
-**מטרה:** גילוי קהילתי או תגובה לגילוי.
-
-**שדות:**
-
-- `owner_email`.
-- `author_name`.
-- `title`  -  חובה.
-- `passage`.
-- `body`.
-- `likes`.
-- `parent_id`  -  מזהה גילוי האב לתגובה.
-
-**קשרים:**
-
-- רשומה עם `parent_id` היא תגובה.
-- רשומה ללא `parent_id` היא פוסט עיקרי.
-- לייק מתעדכן באותו שדה `likes`.
-
----
-
-## 5.22 `SiteSettings`
-
-**מטרה:** הגדרות גלובליות הניתנות לעריכה.
-
-**שדות:**
-
-- `setting_key`  -  חובה.
-- `setting_value`.
-
-**משתמשים לדוגמה:**
-
-- `site_name`.
-- `ivory`.
-- `emerald`.
-- `gold`.
-- `donate_url`.
-
-**קשרים:** נטען על ידי `ThemeContext` ומשפיע על CSS variables.
-
----
-
-## 5.23 `StrongEntry`
-
-**מטרה:** הגדרת מספר Strong’s.
-
-**שדות:**
-
-- `code`  -  חובה, למשל `G2424`.
-- `language`  -  Greek/Hebrew.
-- `original_word`.
-- `transliteration`.
-- `pronunciation`.
-- `part_of_speech`.
-- `root_word`.
-- `definition`.
-- `source`.
-
-**קשרים:**
-
-- `KjvPlusChapter.verses` מכיל את הקודים.
-- `StrongsPopup` מחפש לפי `code`.
-- מקביל מקומי נשמר ב-IndexedDB תחת `strongs`.
-
----
-
-## 5.24 `StudyAnnotation`
-
-**מטרה:** הילייט או קו תחתון בתוך חומר הלימוד.
-
-**שדות:**
-
-- `owner_email`  -  חובה.
-- `book_number`.
-- `book`.
-- `section`  -  `intro`, `outline`, `prayer`, `verse`.
-- `block_id`.
-- `kind`  -  `highlight` או `underline`.
-- `color`.
-- `start_offset`.
-- `end_offset`.
-
-**קשרים:** משמש את `AnnotatedText` ו-`studyAnnotations`; נשמר גם offline.
-
----
-
-## 5.25 `StudyMark`
-
-**מטרה:** סימון או הערה בפסוק.
-
-**שדות:**
-
-- `owner_email`  -  חובה.
-- `mark_type`  -  `highlight`, `bookmark`, `note`.
-- `book_number`.
-- `book`.
-- `chapter`.
-- `verse`.
-- `color`.
-- `note_text`.
-
-**קשרים:**
-
-- מוצג ב-`BibleNotes`.
-- מזוהה גם ב-`ReadingActivity` דרך הפעולה שנרשמה.
-- קיימת גם היסטוריית פעילות, אך זו אינה מקור אמין לחישוב מספר הסימונים הנוכחיים.
-
----
-
-## 5.26 `VerseOfDay`
-
-**מטרה:** פסוק נבחר לתאריך.
-
-**שדות:**
-
-- `verse_date`  -  חובה.
-- `reference`.
-- `text_en`.
-- `text_lu`.
-- `note`.
-
----
-
-## 5.27 `VerseSongSeries`
-
-**מטרה:** סדרת Verse-Song.
-
-**שדות:**
-
-- `name`  -  חובה.
-- `description`.
-- `thumbnail`.
-- `cover_image`.
-- `accent`.
-
----
-
-## 5.28 `VerseSongEpisode`
-
-**מטרה:** רצועה בתוך סדרת Verse-Song.
-
-**שדות:**
-
-- `series_name`  -  חובה.
-- `title`.
-- `verse_ref`.
-- `duration_label`.
-- `duration_seconds`.
-- `audio_url`.
-- `audio_key`.
-- `thumbnail`.
-- `episode_order`.
-
-**קשרים:** `series_name` מחבר ל-`VerseSongSeries.name`.
-
----
-
-# 6. תהליכים ואינטראקציות מרכזיות
-
-## 6.1 טעינת פרק מקרא
-
-1. המשתמש בוחר ספר ב-`BibleReader`.
-2. נוצרת רשת פרקים דרך `ChapterGrid`.
-3. המשתמש לוחץ על פרק.
-4. מנתבים ל-`/Chapter?book=<book>&chapter=<chapter>`.
-5. `Chapter.jsx` קורא את התרגום הפעיל דרך `lib/versions.js`.
-6. `lib/bibleApi.js` מנסה:
-   - לקרוא מהמקור המקומי/המותקן.
-   - לבצע קריאת רשת דרך `bibleChapter`.
-   - להשתמש בתוכן cached ב-IndexedDB כשאין חיבור.
-7. הפרק מוצג פסוק לפסוק.
-8. הפעולה `chapter_visit` נרשמת ב-`ReadingActivity`.
-9. המשתמש יכול לסמן את הפרק כהושלם, ואז נשמרת רשומת `Reading`.
-
-## 6.2 הילייט או הערה בפסוק
-
-1. המשתמש בוחר פסוק.
-2. נפתחת `VerseActionBar`.
-3. הוא בוחר highlight, bookmark או note.
-4. נוצרת רשומת `StudyMark`.
-5. נרשמת פעילות ב-`ReadingActivity`.
-6. הסימון מוצג ב-`BibleNotes` ובדשבורד.
-7. הנתונים נשמרים בשרת; מספר פעולות נשמרות גם במאגר המקומי.
-
-## 6.3 סימון טקסט בחומר לימוד
-
-1. המשתמש בוחר תווים בתוך `AnnotatedText`.
-2. מוצגת סרגל כלים לבחירת highlight/underline.
-3. נקבעים `start_offset` ו-`end_offset`.
-4. נוצרת רשומת `StudyAnnotation`.
-5. הרשומה נשמרת בשרת עבור משתמש מחובר וב-IndexedDB.
-6. `mergeAnnotations` ממזג שרת ומקומי לפי `annotationKey`.
-7. בטעינה הבאה הטקסט מקבל מחדש את הסימונים.
-
-## 6.4 פתיחת מקראי מפתח בתוך הדף
-
-1. המשתמש לוחץ על הפניה, למשל `John 3:16`.
-2. `parseReference` מזהה את הספר, פרק ופסוק.
-3. `selectionInside` מונע פתיחה אם המשתמש רק בחר טקסט לסימון.
-4. נפתח `VersePopup`.
-5. `fetchChapter` טוען את הפרק.
-6. הפופ-אפ מציג את הפסוק ומאפשר סימון.
-7. קיימת גם אפשרות לפתוח את המקום המלא ב-Bible Reader.
-
-## 6.5 התקנת המקרא בלוגנדה
-
-### ידנית מממשק הניהול
-
-1. המנהל נכנס ל-`/AdminDashboard`.
-2. בוחר את מקטע Luganda Bible.
-3. לוחץ על Install/Continue.
-4. `LugandaInstaller` שולח `fse2.functions.invoke("lugandaInstall", ...)`.
-5. הפונקציה:
-   - מאמתת token מנהל.
-   - בודקת אילו פרקים כבר קיימים.
-   - מורידה רק פרקים חסרים.
-   - שומרת כל פרק ב-`LugandaChapter`.
-   - מדווחת כמה פרקים הותקנו וכמה נותרו.
-6. `ChapterCoverage` מציג את הכיסוי לפי ספר.
-
-### אוטומטית מה-cron
-
-1. `cron/scriptureInstall.js` מופעל כל שעה.
-2. הוא מזהה פרקים חסרים.
-3. הוא מפעיל את שירותי ההתקנה עם install key מסביבת השרת.
-4. ההתקנה נמשכת עד שאין עוד התקדמות, כדי לא לעבור כל המקרא בכל ריצה.
-
-## 6.6 התקנת KJV+ ומילון Strong’s
-
-1. המנהל בוחר KJV+ with Strong’s.
-2. `KjvPlusInstaller` מזמין `kjvInstall`.
-3. הפונקציה מתקינה פרקים חסרים ב-`KjvPlusChapter`.
-4. נפתחת אפשרות למלא את מילון Strong’s דרך `strongsDefinition`.
-5. המילון נשמר ב-`StrongEntry`.
-6. בעת הקריאה:
-   - `StrongsText` מזהה קודים כגון `(G2424)`.
-   - הקוד מוצג כ-superscript.
-   - `StrongsPopup` מחפש מקום במקומי, בשרת, ואז במקור חיצוני.
-   - התוצאה נשמרת גם במכשיר.
-
-## 6.7 ביקורת ספריית המקרא
-
-1. המנהל לוחץ על הפעלת דוח הספרייה.
-2. `LibraryReport` מזמין `scriptureAudit`.
-3. הפונקציה קוראת:
-   - `KjvPlusChapter`.
-   - `LugandaChapter`.
-   - `StrongEntry`.
-4. היא מחשבת:
-   - כמה פרקים מותקנים.
-   - אילו פרקים חסרים.
-   - אילו פרקים פגומים.
-   - איפה מספרי הפסוקים שונים בין התרגומים.
-   - כמה קודי Strong’s חסרים.
-5. הדוח מוצג בממשק הניהול.
-6. הפונקציה אינה כותבת נתונים.
-
-## 6.8 התחברות קורא
-
-1. המשתמש נכנס ל-`/Login`.
-2. `fse2.auth.login` מאמת את הפרטים.
-3. `AuthProvider` מרענן את `fse2.auth.me()`.
-4. המשתמש מופנה ל-Dashboard.
-5. המצב נשמר בשירות ההתחברות של FSe2, לא ב-token מנהל מקומי.
-
-## 6.9 התחברות מנהל תוכן
-
-1. המשתמש נכנס ל-`/Admin`.
-2. `callAdmin("login", ...)` מזמין את `adminAuth`.
-3. הפונקציה:
-   - מאמתת את המשתמש מול `AdminAccount`.
-   - משווה hash עם salt.
-   - יוצרת session חתום ב-HMAC.
-   - מחזירה token.
-4. `setAdminToken` שומר את ה-token ב-`localStorage` תחת `pr_admin_token`.
-5. בכניסה למרכז הניהול נבדק ה-session דרך action בשם `session`.
-6. פקודות התקנה מעבירות את ה-token לפונקציות השרת.
-7. תפוגת ה-token או חתימה שגויה מחזירה שגיאה/401.
-
-## 6.10 פרסום גילוי קהילתי
-
-1. משתמש לא מחובר רואה כפתור התחברות.
-2. משתמש מחובר ממלא כותרת, פסוק וגוף.
-3. `submitRevelation` יוצר רשומת `Revelation` ללא `parent_id`.
-4. הרשומה מופעלת ברשימה.
-5. לחיצה על Comments מציגה תגובות.
-6. תגובה נשמרת כרשומת `Revelation` עם `parent_id`.
-7. לייק מעדכן את שדה `likes`.
-
-## 6.11 שיתוף פסוק
-
-1. המשתמש בוחר Share.
-2. נפתח `ShareSheet`.
-3. הקוד בונה גוף הכולל:
-   - פסוק בשפה הנוכחית.
-   - פסוק בשפה השנייה, אם קיים.
-   - תפילה.
-   - cross-references.
-   - קישור.
-4. ערוצי השיתוף נבנים על ידי `lib/share.js`.
-5. Copy משתמש ב-`navigator.clipboard`, עם פתיחת חלונית חלופית אם נדרש.
-
-## 6.12 הורדה אופליין
-
-1. המשתמש נכנס ל-`/Offline`.
-2. בוחר תרגום או קטגוריית תוכן.
-3. הדף מאמת אילו פרקים כבר קיימים ב-IndexedDB.
-4. חסרים נטענים דרך `fetchChapter`.
-5. הפרקים נשמרים בחנויות `chapters`/`verses`.
-6. התוכן הציבורי נשמר בחנויות `devotionals`, `commentary`, `prayers`, `qa` ו-`verseOfDay`.
-7. הגדרות Strong’s נשמרות בחנית `strongs`.
-8. במצב offline, `bibleApi` קורא מהמקומי.
-9. מחיקת מרכז האופליין מוחקת נתונים מהמכשיר, אך לא את נתוני השרת.
-
-## 6.13 נגן אודיו גלובלי
-
-1. המשתמש בוחר סדרה או רצועה.
-2. `PlayerProvider` מקבל queue ומתחיל `Audio`.
-3. ה-`Audio` element חי ברמת האפליקציה, ולכן ההשמעה ממשיכה בעת ניווט.
-4. `GlobalPlayer` מציג:
-   - שם הרצועה.
-   - זמן.
-   - seek.
-   - next/previous.
-   - shuffle.
-   - repeat.
-   - עוצמה.
-   - מהירות.
-   - רשימת queue.
-5. אירוע `ended` מחליט אם לעבור לרצועה הבאה, לחזור על אחת או להפסיק.
-
----
-
-# 7. הערות טכניות לפיתוח
-
-## 7.1 ספריות ותשתיות
-
-### React
-
-- רכיבים פונקציונליים עם Hooks.
-- state מקומי למצב UI.
-- Context לשלושה שירותים גלובליים:
-  - `AuthProvider`.
-  - `ThemeProvider`.
-  - `PlayerProvider`.
-
-### React Router
-
-- ניווט בין דפים.
-- `useSearchParams` לפרמטרי כתובת כגון ספר, פרק, שפה ופסוק.
-- `useNavigate` למעברים לאחר התחברות, התקנה או פעולות.
-
-### TanStack React Query
-
-- טעינת collections.
-- mutations עם `useMutation`.
-- invalidation לאחר יצירה, עדכון או מחיקה.
-- `refetchInterval` לפיד הפעילות.
-
-### Lucide React
-
-אייקוני הממשק מגיעים מ-`lucide-react`.
-
-### date-fns
-
-- תאריכים.
-- פורמט תאריך.
-- תצוגת “לפני X דקות”.
-
-### FSe2 SDK
-
-`fse2` הוא ממשק הגישה ל:
-
-- Authentication.
-- Entities.
-- Functions.
-- Storage ו-app files.
-
-### IndexedDB
-
-מיושם בעצמאות ב-`lib/offlineDb.js` ללא ספריית עזר.
-
-### Service Worker
-
-- cache-first עבור app shell ותמונות.
-- network-first עבור נתונים.
-- מתקיים גם cache runtime.
-
----
-
-## 7.2 דפוס fallback
-
-אחד העיקריים במערכת הוא העדפת נתוני שרת אך מעבר לתוכן מקומי כאשר אין נתונים או כשהשרת נכשל.
-
-דוגמאות:
-
-```js
-const rows = liveRows && liveRows.length ? liveRows : SEED_ROWS;
+```text
+Devotional.code       → DevotionalProgress.devotional_code
+ReadingPlan.day       → Reading.plan_day
+Prayer.title          → PrayerSaved.prayer_title
+PrayerPassage.book/chapter/verse → Bible chapter/verse
+CrossReference source → target Bible verse
+Revelation.parent_id  → Revelation.id (תגובה לחשיפה)
+DiscussionThread.group_name → DiscussionGroup.name
+StudyMark/StudyAnnotation.owner_email → משתמש מחובר
+KjvPlusChapter/LugandaChapter.book_number + chapter → פרק מותקן
 ```
 
-זה נכון ל:
+---
+
+## 6. תהליכים ואינטראקציות מרכזיות
+
+### 6.1 כניסת קורא רגיל
+
+1. המשתמש נכנס ל־`Login` או `Signup`.
+2. `fse2.auth.login()` או `fse2.auth.register()` מבצע אימות.
+3. `AuthProvider` טוען את המשתמש עם `fse2.auth.me()`.
+4. לאחר הצלחה המשתמש מופנה ל־`Dashboard`.
+5. רשומות משתמש נטענות עם `enabled: !!email`, כך שהן לא נשלפים כשאין משתמש.
+6. ה־Bearer/session token של הפלטפורמה נשמר במקום שה־SDK מגדיר; `appParams` קורא אותו בזמן אמת מ־`localStorage`.
+
+### 6.2 כניסת מנהל תוכן
+
+המנהל אינו נכנס דרך `AuthContext`. לכן יש שני מסלולים:
+
+#### מסלול server
+
+1. `adminSignIn()` שולח דוא״ל וסיסמה ל־`adminAuth`.
+2. השרת בודק salted SHA-256.
+3. נוצר token חתום המכיל זמן תפוגה וגרסת session.
+4. ה־token נשמר ב־`localStorage`.
+5. `adminContent` מאמת את ה־token לפני כל פעולת תוכן.
+6. `ensureFreshAdminToken()` מחדש את ה־session לפני משימות ארוכות.
+
+#### מסלול direct
+
+אם function gateway אינו זמין לדפדפן:
+
+1. `adminDirect` קורא את `AdminAccount` דרך entity SDK.
+2. הוא משתמש ב־`sha256Hex` מהדפדפן.
+3. פעולות ה־CRUD מתבצעות ישירות מול entities בהרשאות המשתמש המחובר.
+4. תשובות שני המסלולים אמורות לשמור על אותו מבנה על מנת שה־panels לא ידעו איזה מסלול הפעיל.
+
+### 6.3 פתיחת פרק בקורא
+
+1. המשתמש בוחר ספר מ־`BookGrid`.
+2. `ChapterGrid` יוצר קישור עם `book` ו־`chapter`.
+3. `Chapter` קורא את הפרמטרים ואת גרסת התרגום הפעילה.
+4. `fetchChapter()` מנהל את מקורות הפרק:
+   - נתוני entity מותקנים.
+   - מקור חיצוני עם timeout.
+   - נתוני offline מקומיים כגיבוי.
+5. הפרק מוחזר כ־רשימת פסוקים עם `verse` ו־`text`.
+6. אם הטקסט כולל קודי G/H, `StrongsText` מציג אותם כ־superscript.
+7. הפערת הפרק נרשמת ב־`ReadingActivity`.
+8. סימון השלמה נשמר ב־`Reading` דרך `recordReading`.
+9. אם הפרק משתייך לתוכנית, `plan_day` נסגר אוטומטית.
+
+### 6.4 שמירת סימון בפסוק
+
+1. המשתמש בוחר את `VerseActionBar`.
+2. בוחר Highlight, Bookmark או Note.
+3. נוצר `StudyMark` עם:
+   - מזהה בעלים.
+   - ספר, פרק ופסוק.
+   - צבע או טקסט הערה.
+4. הרשומה מופיעה ב־`BibleNotes` וב־Dashboard.
+5. הפעולה נרשמת ב־`ReadingActivity`.
+
+### 6.5 הדגשת טקסט ארוך
+
+1. `AnnotatedText` מקבל טקסט ו־annotations לפי `block_id`.
+2. המשתמש בוחר תווים.
+3. ההיסט מחשב את `start_offset` ו־`end_offset`.
+4. `AnnotatedText` מציג toolbar לבחירת צבע או underline.
+5. `studyAnnotations.saveAnnotation()` שומר:
+   - בשרת עבור משתמש מחובר.
+   - ב־IndexedDB כדי לשרוד offline ולאורח.
+6. בעת טעינה `mergeAnnotations()` ממזג שרת ו־local ומנטרל כפילויות.
+
+### 6.6 תפילה והפניות לפסוק
+
+1. המשתמש לוחץ Prayer או Cross-references ב־`VerseActionBar`.
+2. `PassagePrayer` מחפשת תפילות שה־`scripture_ref` שלהן תואם לספר, פרק ופסוק.
+3. אם אין התאמה מדויקת, ניתן להשתמש ב־fallback מה־seed content.
+4. `CrossRefList` מציג הפניות ישירות לפסוק; אם אין, מוצגות הפניות אחרות בפרק.
+5. לחיצה על הפניה סוגרת את הפנל ונכנסת ל־Chapter עם פסוק יעד.
+6. הפעולות משתמשות ב־`normalisePassage`, `normaliseCrossRef` ו־`passageNaturalKey` כדי למנוע כפילויות.
+
+### 6.7 פתיחת מילון Strong’s
+
+1. `StrongsText` מזהה קוד בתבנית `(G2424)` או `(H436)`.
+2. הקוד מנורמל ל־`G2424`/`H436`.
+3. `StrongsPopup` מחפש קודם ב־IndexedDB.
+4. אם אין, הוא מנסה entity/function מותקן.
+5. אם אין גם כן, `strongsDefinition` מאחזר מהמילונים הציבוריים.
+6. התוצאה נשמרת במסד הנתונים ובמכשיר, כך שהפעם הבאה מושגת מיד.
+7. כפתור מקור חיצוני מאפשר לפתוח את הערך המלא ב־Blue Letter Bible.
+
+### 6.8 ייבוא תפילות והפניות לפי ספר
+
+1. המנהל מוריד את template מה־media library.
+2. המנהל בוחר קובץ JSON המתאר לספר אחד.
+3. `validatePrayerFile()` בודק:
+   - פורמט.
+   - מספר ספר.
+   - קיום טקסט בשתי שפות.
+   - טווחי פסוקים.
+   - תקינות הפניות.
+4. אם קיימת שגיאה, הייבוא נעצר וכל הבעיות מוצגים.
+5. אם הקובץ תקין, מתבצע upsert לפי מפתח טבעי:
+   - תפילה לפי ספר/פרק/פסוק/טווח/כותרת.
+   - הפניה לפי פסוק מקור ופסוק יעד.
+6. המסך מציג progress ודוח סיכום.
+7. אותו קובץ ניתן להעלות שוב; רשומות קיימות יתעדכנו ולא יוכפלו.
+
+### 6.9 ניהול אוסף כללי
+
+1. `CollectionsPanel` קורא את המטא־נתונים מ־`adminCollections`.
+2. בחירת אוסף מחזירה את שדות הטופס.
+3. טעינת הרשומות מתבצעת עם `callAdminData("list", { entity, limit: 500 })`.
+4. Add או Pencil פותחים את `RecordEditor`.
+5. `RecordEditor` מייצר שדה לפי סוג:
+   - text
+   - textarea
+   - number
+   - boolean
+   - refs
+6. שדה refs משתמש ב־`CrossRefEditor`.
+7. Delete דורש אישור ב־`ConfirmDialog`.
+8. לאחר שמירה מוצג notice והרשומות נטענות מחדש.
+
+### 6.10 התקנת התנ"ך
+
+1. המנהל לוחץ Install או Download.
+2. הלקוח קורא ל־`ensureFreshAdminToken()`.
+3. נשלחת בקשה ל־`lugandaInstall` או `kjvInstall` עם action ו־token.
+4. השרת מאמת את ה־session או את install key.
+5. השרת קורא את הפרקים שכבר קיימים.
+6. רק פרקים חסרים מורדדים.
+7. כל פרק נשמר עם `book_number`, `chapter`, `verse_count` ו־JSON של פסוקים.
+8. התקדמות מדווחת ללקוח.
+9. הריצה ניתנת לחזרה; כשל נקודתי מנסה שוב בהרצה הבאה.
+10. `ChapterCoverage` מציג את הפרקים החסרים או השבורים.
+
+### 6.11 ביקורת ספרייה
+
+1. `LibraryReport` מפעיל `scriptureAudit` עם `action: "status"`.
+2. הפונקציה קוראת את KJV+, Luganda ו־Strong’s.
+3. היא מחזירה:
+   - מספר פרקים מותקנים מתוך 1,189.
+   - פרקים חסרים.
+   - פרקים שבורים.
+   - פערים במספר הפסוקים בין התרגומים.
+   - כיסוי מילון Strong’s.
+4. הפונקציה אינה כותבת נתונים.
+
+### 6.12 התקנת הספרייה אוטומטית
+
+1. `cron/scriptureInstall.js` מופעל כל שעה.
+2. הוא בודק את המצב האמיתי במסד הנתונים.
+3. הוא מנסה למלא רק פרקים חסרים.
+4. הוא עוצר כאשר אין עוד התקדמות, כדי לא להעמיס מקורות חיצוניים.
+5. פרק שנכשל נשאר חסר וייבדק בהרצה הבאה.
+
+### 6.13 יצירת חשיפה ותגובה
+
+1. אורח רואה מסך התחברות.
+2. משתמש מחובר שולח `title`, `passage` ו־`body`.
+3. נוצר `Revelation` ללא `parent_id`.
+4. לייק מגדיל את `likes`.
+5. תגובה נוצרת כ־`Revelation` נוסף עם `parent_id` של החשיפה.
+6. המסך מרכז רשומות ללא `parent_id` כחשיפות, ורשומות עם `parent_id` כתגובות.
+
+### 6.14 שמירת התקדמות ו־streak
+
+1. `recordReading()` שומר רשומת `Reading`.
+2. אם לפרק יש `plan_day`, גם ה־ReadingPlan מתקדם.
+3. `computeStreak()` מחשב רצף ימים מתוך `read_date`.
+4. `Dashboard` מציג streak, סטטיסטיקות ו־ActivityFeed.
+5. `ActivityFeed` מרענן אוטומטית כל 30 שניות.
+
+### 6.15 הורדת תוכן למצב offline
+
+1. `Offline` מציג את התרגומים והאוספים הניתנים להורדה.
+2. להורדת פרק נשמרים `chapters` ו־`verses`.
+3. לתוכן ציבורי נשמרים stores נפרדים:
+   - devotionals
+   - commentary
+   - prayers
+   - prayerPassages
+   - crossReferences
+   - qa
+   - verseOfDay
+4. הגדרות Strong’s נשמרות ב־`strongs`.
+5. `offlineDb` מתקן schema ישן באמצעות הגברת `DB_VERSION`.
+6. ספירת האחסון מחושבת מ־`navigator.storage` או מהנתונים המקומיים.
+7. `BibleReader` מציג ספר כזמין offline רק כאשר כל פרקיו קיימים.
+
+### 6.16 הפעלת נגן גלובלי
+
+1. מסך Verse-Songs יוצר queue של episodes.
+2. `PlayerProvider` מפעיל `Audio` אחד שנמצא ברמת האפליקציה.
+3. המשתמש עובר לעמוד אחר; הנגן ממשיך לפעול כי ה־Audio element אינו נעלם עם ה־component.
+4. `GlobalPlayer` מציג מצב compact או expanded.
+5. מצבי queue, repeat, shuffle, speed, volume ושגיאה נשמרים ב־Provider.
+
+---
+
+## 7. הערות טכניות לפיתוח
+
+### 7.1 שכבות המצב
+
+| שכבה | כלי | מתאים ל... |
+|---|---|---|
+| מצב שרת | FSe2 Entities | מקור אמת לרשומות משתמש ותוכן |
+| Cache אסינכרוני | TanStack React Query | רשימות, פרטי רשומות ו־mutations |
+| Context | Auth, Theme, Player | מצב גלובלי או משותף לכל העמודים |
+| מצב מקומי | `useState`/`useReducer` | טפסים, פתיחת מודאלים ו־UI זמני |
+| `localStorage` | הגדרות ו־seed state | saved insights, joined groups, completed devotionals וכו׳ |
+| IndexedDB | `offlineDb` | פרקים, תוכן, סימונים ו־Strong’s |
+| Service Worker | `public/sw.js` | app shell, תמונות ונכסים סטטיים |
+
+### 7.2 מפתחות Query
+
+הקוד משתמש במפתחות כגון:
+
+- `["prayers"]`
+- `["insights", kind]`
+- `["commentary"]`
+- `["readingActivity", email]`
+- `["studyMarks", email]`
+- `["journalEntries"]`
+- `["chapterInsights"]`
+
+כללים מומלצים:
+
+1. כל query התלוי במשתמש צריך לכלול את `email` או מזהה משתמש.
+2. כל query שמשתנה לפי שפה או הרשאה צריך לכלול גם את הפרמטרים האלה.
+3. לאחר create/update/delete יש להפעיל `invalidateQueries`.
+4. יש להימנע ממפתחות סטטיים כאשר `fetchPublicCollection` עשוי להחזיר תוכן שונה למחובר וללא־מחובר.
+
+### 7.3 דפוס Fallback
+
+המערכת מעדיפה תוכן חי, אך שומרת seed content כרשת ביטחון. דפוס זה מופיע ב:
 
 - Devotionals.
 - Prayers.
 - Insights.
-- Q&A.
-- Reading Plan.
-- Live Sessions.
-- Discussion Groups.
-- Verse-Songs.
-
-### יתרון
-
-הממשק נשאר שימושי גם לפני שה-CMS מלא.
-
-### סיכון
-
-- ייתכן שתוכן מקומי יציג גרסה ישנה.
-- זיהוי כפילויות מבוסס לעיתים על `title`, ולא על מזהה יציב.
-- אין כלל מסודר למיזוג עדכון בין seed לרשומת חיה.
-
-**המלצה:** להוסיף versioning או `seedKey` יציב, ולהבהיר אם תוכן מקומי הוא fallback בלבד או אינו ניתן למחיקה.
-
----
-
-## 7.3 דפוס collections
-
-פעולת קריאה ציבורית רגילה:
-
-```js
-fse2.entities.Entity.list("-updated_date", 300)
-```
-
-מגבלות:
-
-- `300`, `200`, `400` וכו׳ מייצגים מספר שורות מרבי, לא בהכרח pagination מלא.
-- רשימות ארוכות עלולות להיות חתוכות.
-- אין cursor או pagination מרכזי למספר collections.
-
-**המלצה:** אם הספרייה תגדל, להוסיף pagination או pagination לפי keyset.
-
----
-
-## 7.4 סינון נתונים אישיים בצד הלקוח
-
-בכמה דפים, כגון `ActivityFeed`, `BibleNotes` ו-`Dashboard`, השרת מחזיר רשומות ואז הלקוח מסנן לפי:
-
-```js
-row.owner_email === email
-```
-
-זה מתאים למקרה שבו ה-API כבר מגביל למשתמש, אך אינו תחליף לרמת הרשאה בשרת.
-
-**עיקרון:** כל סינון אישי חייב להתבצע גם ברמת ה-entity access וגם ברמת ה-API. אין להסתמך על סינון client-side בלבד.
-
----
-
-## 7.5 מפתחות Query
-
-מפתחות query צריכים לכלול את כל הפרמטרים שמשפיעים על התוצאה.
-
-דוגמאות קיימות:
-
-```js
-["insights", kind]
-["prayers"]
-["studyMarks", email]
-["readingActivity", email]
-```
-
-נקודות שדורשות זהירות:
-
-- `["prayers"]` לא כולל authenticated.
-- `["insights"]` לא כולל authenticated.
-- במקרים אחרים כן כולל `email`.
-- אם תשתנה זכות הגישה או מספר הפריטים, יש לכלול את המזהה במפתח.
-
----
-
-## 7.6 מקורות מקרא וגיבוי
-
-המערכת משתמשת בכמה מקורות:
-
-- `bible-api.com` לאנגלית.
-- Wordplanet ללוגנדה.
-- Bolls/מקור דומה ל-KJV+.
-- Open Scriptures Strong’s.
-- Blue Letter Bible כמקור משני.
-
-מקורות חיצוניים עלולים להשתנות. לכן מומלץ:
-
-1. להפעיל timeout.
-2. לנסות מספר מקורות.
-3. לשמור תשובה מוצלחת.
-4. לאחסן את התוצאה.
-5. להבדיל בין:
-   - פרק לא קיים.
-   - פרק שגום.
-   - שגיאת רשת.
-   - תוכן מקומי לא זמין.
-
----
-
-## 7.7 התקנה אידמפוטנטית
-
-ההתקנות אינן עושות upsert מלא בכל ריצה. הן:
-
-- קוראות את המצב הקיים.
-- מתקינות רק פרקים חסרים.
-- ממשיכות עד שאין התקדמות.
-
-זה מפחית עומס על המקור, אך עלול ליצור בעיות אם פרק קיים אך פגום. לכן כדאי להפריד:
-
-- `missing`.
-- `broken`.
-- `present and valid`.
-
-`ChapterCoverage` כבר מציג את `missing` ו-`broken` בנפרד.
-
----
-
-## 7.8 Strong’s
-
-קודי Strong’s מנורמלים לצורה:
-
-```text
-G2424
-H0436 → H436
-```
-
-המערכת:
-
-- מזהה קודים בתוך הטקסט.
-- מציגה אותם כ-superscript.
-- שומרת את המילון בשרת.
-- שומר copy מקומי ב-IndexedDB.
-- משתמשת במקור חיצוני כ-fallback.
-
-שים לב:
-
-- הקוד מופקד בתוך הטקסט של הפסוק.
-- `StrongsText` מנסה לזהות את המילה שאחריה הקוד.
-- אין כאן מנוע נרדף או הברה מלאה; התצוגה מבוססת regex.
-- לפני תצוגה של KJV+ יש לוודא שכל הפרקים עברו את אותו parser.
-
----
-
-## 7.9 אינטראקציות מקרא
-
-`lib/scriptureRefs.js` מרכז את:
-
-- aliases כגון `Ps` → `Psalms`.
-- פענוח פרק.
-- פענוח פסוק.
-- טווחים כגון `4:6-7`.
-- חיפוש שם ספר בקנוני.
-
-הפניות בחומר לימוד משתמשות בפורמט:
-
-```text
-[[John 3:16]]
-```
-
-או בטקסט רגיל ברכיבים שונים. שינוי פורמט דורש עדכון מקביל ב:
-
-- `scriptureRefs.js`.
-- `chapterStudy.js`.
-- `bookPrayers.js`.
-- `BookPrayerPanel`.
-
----
-
-## 7.10 סימון טקסט והתנהגות לחיצה
-
-`selectionInside` נועד למנוע מצב שבו המשתמש בוחר טקסט לסימון, אך הלחיצה על רכיב מפעילה גם פעולת ניווט.
-
-כל רכיב שיש בו גם:
-
-- טקסט ניתן לבחירה.
-- קישור/כפתור.
-
-צריך לבדוק את התנאי לפני ביצוע הניווט.
-
----
-
-## 7.11 שינוי מבנה נתונים
-
-### `verses` כ-JSON
-
-שדה `verses` ב-`KjvPlusChapter` וב-`LugandaChapter` הוא string המכיל JSON.
-
-משמעות:
-
-- לא ניתן לסנן ישירות לפי פסוק.
-- עליון לפענח JSON בכל קריאה.
-- שינוי פורמט דורש migration.
-- כדאי לשמור schema/version יחד עם ה-JSON.
-
-### `highlighted_verses` כטקסט
-
-ב-`Reading` נשמרים מספרי פסוקים מסומנים כטקסט, לא כ-records עצמאיים. היתרון הוא פשטות; החסרון הוא חוסר יכולת שאילתה ועקביות חלופית ל-`StudyMark`.
-
-### `owner_email` כמזהה בעלות
-
-הרבה entities משתמשות בדוא"ל במקום `owner_id`. זה מפשט את האינטגרציה עם `fse2.auth.me()`, אך עלול ליצור בעיות אם:
-
-- המשתמש משנה דוא"ל.
-- נדרשת העברת חשבון.
-- נדרש לנהול יותר מפרופיל אחד למשתמש.
-
----
-
-## 7.12 אבטחה
-
-### Token מנהל
-
-ה-token נשמר ב-`localStorage`. יתרון: פשוט לשימוש. חסרון: זמין ל-XSS.
-
-יש לוודא:
-
-- ש-`Content-Security-Policy` מגביל scripts ו-connections.
-- שאין ה injection של HTML מתוך מסד הנתונים.
-- שאין סודות API חשופים בקוד הלקוח.
-
-### סיסמת מנהל
-
-`DEFAULT_PASSWORD` מוגדר ללא fallback ברירת מחדל בסביבת production.
-
-### Hash של סיסמה
-
-המערכת משתמשת ב-SHA-256 עם salt. זה טוב יותר מאחסון plain text, אך אינו אידיאלי לאחסון סיסמאות. מומלץ להשתמש ב-Argon2id, scrypt או bcrypt, עם pepper משרתי אם יש צורך.
-
-### הרשאות
-
-הגדרות ה-entities מבטיחות public read על רוב התוכן. יש לוודא ש-`functions/content.js` ו-`functions/adminContent.js` מגבילים כתיבה בפועל, לא רק בממשק.
-
-### חיבורים חיצוניים
-
-המערכת מורידה תוכן מאתרים ציבוריים. יש להגביל:
-
-- SSRF.
-- Redirects.
-- גודל תגובה.
-- סוג MIME.
-- timeout.
-- retry/backoff.
-
----
-
-## 7.13 ביצועים
-
-### `useMemo`
-
-משתמש במקומות רלוונטיים:
-
-- סינון insights.
-- סינון books.
-- חישוב הכיסוי.
-- איחוד seed ונתוני שרת.
-
-### שאילתות רשת
-
-יש להימנע מ:
-
-- קריאה כפולה לאותו collection עם `queryKey` שונה.
-- refetch תכיפות מדי.
-- טעינת 400 רצועות מלאות בכל דף שאינו זקוק לכל הנתונים.
-
-### Service Worker
-
-אין לשמש `cache.addAll` לכל URL שעלול להיכשל; הקוד הנוכחי ממשיך גם אם `addAll` נכשל, אך כדאי לנטר כל cache miss.
-
----
-
-## 7.14 נגישות
-
-המערכת כוללת:
-
-- `aria-label`.
-- `aria-current`.
-- `aria-selected`.
-- `role="status"`.
-- `aria-live`.
-- `role="dialog"`.
-- `aria-modal`.
-- כפתורים אמיתיים מסוג `button`.
-- תמיכה ב-Escape במודאל ובתפריטים.
-
-נקודות שכדאי לבדוק:
-
-- `Modal` אינו מנעל את הפוקוס בתוך הדיאלוג.
-- אין focus trap.
-- כפתור הסגירה משתמש באנגלית גם אם שאר הממשק מתורגם בעתיד.
-- רכיב `span role="button"` ב-`BookOutline` דורש טיפול מלא ב-Enter ו-Space.
-- אין מצב focus ברור לכל האלמנטים האינטראקטיביים.
-- `role="presentation"` על backdrop עם click handler דורש בדיקה של דפוסי לחיצה ומקלדת.
-
----
-
-## 7.15 CSS ועיצוב
-
-העיצוב מבוסס על:
-
-- `lib/brandCss.js`.
-- קלסי `pr-*`.
-- Tailwind חלופי במקרים מסוימים.
-
-יש שימוש מעורב ב:
-
-- CSS variables.
-- קלאסי Tailwind.
-- inline styles.
-
-עיקרון מומלץ:
-
-- להשאיר את הצבעים, מרווחי הפנימיות והעוגנים ב-CSS variables.
-- להשתמש ב-inline style רק כש הערך דינמי.
-- לא לשכפל ערכי צבע קשיחים ברכיבים.
-
-`ThemeContext` מחשב גווני deep ו-soft מתוך צבעי ivory, emerald ו-gold שנבחרו על ידי המנהל.
-
----
-
-## 7.16 PWA
-
-`PwaHead` מוסיף meta tags בזמן ריצה, מוחק את מטא־תגיות כפולות ומחליף קישורי icon.
-
-`public/sw.js` מגדיר cache versions:
-
-```text
-prayread-shell-v2
-prayread-runtime-v2
-```
-
-בעת שינוי מבנה routes או cache behavior:
-
-- יש להגדיל את גרסת ה-cache.
-- יש לבדוק שכל נתיבי ה-shell עדיין קיימים.
-- יש לוודא שה-service worker אינו מציג stale API responses במקום נתונים חדשים.
-
----
-
-## 7.17 בדיקות מומלצות
-
-### Unit
+- Community.
+- Live sessions.
+- Discussion groups.
+- Study resources.
+
+כאשר יש live rows אך חלק מהרשומות חסרות, ייתכן שה־merge יצור מצב חלקי. אם זה אינו מבוקש, כדאי להחליף את merge ל־“live wins” או “seed fallback” באופן מפורש.
+
+### 7.4 דפוס Upsert
+
+הייבוא אינו מסתמך על `id`, אלא על מפתח טבעי:
+
+- פרק: ספר + פרק.
+- התקדמות: משתמש + קוד/פרק.
+- תפילה: ספר + פרק + פסוק/טווח + כותרת.
+- הפניה: פסוק מקור + פסוק יעד.
+- הערת קורא: משתמש + סוג + ספר + פרק + פסוק.
+
+היתרון: אפשר להעלות קובץ שוב בבטיחות. החסרון: אם שני imports רצים במקביל, שניהם עלולים ליצור כפילויות. יש להוסיף אילוץ ייחודיות או advisory lock ברמת השרת.
+
+### 7.5 הוספת entity חדש
+
+1. ליצור `entities/NewEntity.json`.
+2. להגדיר את השדות, `required`, labels ו־ACL.
+3. להוסיף mapping ל־`contentApi`, `functions/content` ול־`adminCollections` אם הוא צריך להיות ניהולי או ציבורי.
+4. להוסיף natural key ולוודא שה־upsert משתמש בו.
+5. להוסיף שאילתות React Query עם מפתח הכולל מזהה משתמש.
+6. להוסיף invalidation לאחר mutations.
+7. אם הנתונים נדרשים offline  -  להוסיף store ב־`offlineDb` ולשדרג את `DB_VERSION`.
+8. להוסיף migration אם מבנה הנתונים הישן עלול להתנגש.
+9. להוסיף בדיקות ל־ACL ול־natural key.
+
+### 7.6 הוספת אוסף לממשק הניהול
+
+הוספת האוסף דורשת:
+
+- הגדרת metadata ב־`adminCollections`.
+- הבטחת שה־entity קיים.
+- הוספת השדות למטא־נתונים.
+- בדיקת שה־`RecordEditor` מכיל את סוג השדה הנכון.
+- בדיקת שה־adminDirect ו־adminContent מכירים את ה־entity.
+- בדיקת create/update/delete ו־הודעת הצלחה.
+
+### 7.7 הוספת תרגום חדש
+
+1. להוסיף רשומה ל־`VERSIONS` ב־`lib/versions.js`.
+2. להגדיר `id`, `translation`, `language`, `strongs` ו־`note`.
+3. לוודא ש־`fetchChapter` מכיר את ה־`translation`.
+4. להוסיף entity או source logic.
+5. לוודא מפתח cache ייחודי לתרגום.
+6. להוסיף תמיכה ב־offline key.
+7. להוסיף route ב־VersionPicker.
+8. להוסיף דוח כיסוי ל־scriptureAudit.
+9. לבדוק זמינות מקור, זכויות יוצרים, גודל נתונים והתנהגות ללא רשת.
+
+### 7.8 הוספת דף חדש
+
+1. ליצור `pages/NewPage.jsx`.
+2. להשתמש ב־`createPageUrl("NewPage")` בכל הקישורים.
+3. לא לבנות URL ידנית.
+4. להוסיף את הדף לניווט רק אם הוא אמור להיות גלובלי.
+5. להגדיר states: loading, empty, error ו־success.
+6. להשתמש ב־EmptyState ו־Spinner כדי לשמור על אחידות.
+7. לבדוק התנהגות במובייל, מקלדת ו־RTL.
+
+### 7.9 עיצוב
+
+- `BRAND_CSS` הוא מקור ה־CSS המרכזי.
+- צבעים מוגדרים כ־CSS variables כדי ש־ThemeContext יוכל לעדכן אותם.
+- רכיבים רבים משתמשים ב־inline style לצבעים ייחודיים; עדיף להעביר ערכים דומים למשתני CSS.
+- `__generated/tailwind.css` הוא generated output ולא source of truth.
+- שדות צבע שונים מה־brand נראים ברכיבים כמו `ChapterActionBar`; יש לשמור על ניגודיות ועל עקביות עם ivory/emerald/gold.
+- כמה קומפוננטים משתמשים בשיעורי Tailwind ישנים, ואחרים ב־`pr-*`; שתי המערכות פעילות במקביל.
+
+### 7.10 אבטחה
+
+#### סיכונים מרכזיים שיש לטפל בהם
+
+1. **סיסמת ברירת מחדל קבועה בקוד:** `functions/adminAuth.js` כולל fallback חלופי. יש להסיר אותו, להגדיר secret בסביבה ולבצע rotation.
+2. **SHA-256 אינו password KDF מומלץ:** salted SHA-256 חלש יחסית ל־Argon2id, scrypt או PBKDF2 עם iterations גבוהות.
+3. **Session ארוך:** כפי שמתועד, ה־grace הוא 14 יום. יש להפחית את חלון הסיכון, להוסיף revocation ולחייב re-authentication לפעולות רגישות.
+4. **Token ב־`localStorage`:** חשוף ל־XSS. יש להקטין את השטח המזהה ולוודא כי אין הזרקת HTML.
+5. **הרשאות רחבות ל־user/authenticated:** בידודים כגון `JournalEntry`, `StudyMark`, `PrayerSaved` ו־`DiscussionThread` עלולים לאפשר למשתמש מחובר לעדכן או למחוק רשומות של אחרים, אלא אם הפלטפורמה מוסיפה תנאי בעלות. יש להוסיף ownership conditions.
+6. **סינון בצד הלקוח אינו אבטחה:** `owner_email` filters ב־Dashboard/BibleNotes אינם תחליף ל־ACL.
+7. **יצירה ציבורית:** Contact ו־QA עלולים להיות מוקשים בספאם; כדאי להוסיף CAPTCHA/rate limiting ו־moderation.
+8. **מילון Strong’s עם כתיבה:** אם הפונקציה כותבת cache ללא הגבלה, עלולה להפוך ל־write amplification.
+9. **HTML ממקורות חיצוניים:** יש לנקות HTML בצד השרת ולא להעביר HTML ל־`dangerouslySetInnerHTML`.
+10. **סודות ב־entity:** `AdminAccount.secret` אינו צריך להיות חשיף לדפדפן אם ניתן להחתיך אותו ל־environment secret.
+
+### 7.11 אמינות ועמידות
+
+- `bibleApi` מגביל קריאות חיצוניות ב־timeout של כ־9 שניות.
+- ההתקנות אינדמפוטנטיות וניתנות להפעלה חוזרת.
+- `ChapterCoverage` מבדיק גם פרקים שבורים, לא רק חסרים.
+- `offlineDb` מתקן schema ישן בעת פתיחת המסד.
+- יש להוסיף exponential backoff למקורות חיצוניים.
+- יש להוסיף circuit breaker למקור שחוזר על כשל.
+- יש להגביל קצב התקנה כדי לא להפגיע במקור.
+- אין בקוד retry מובנה גלובלי; לכן כל מקור נכשל נדון להרצה הבאה.
+- יש להוסיף לוג מובנה עם request ID, משך בקשה ומקור, ללא logging של tokens או תוכן רגיש.
+
+### 7.12 ביצועים
+
+- רשימות רבות מוגבלות ל־200 - 500 רשומות.
+- `Pagination` הוא pagination ויזואלי; הוא אינו מבצע server-side pagination.
+- ככל שהספרייה גדלה, יש להוסיף cursor pagination ואינדקסים.
+- `ActivityFeed` מבצע polling כל 30 שניות; יש לשקול לעצור polling כשהדף אינו פעיל.
+- `Chapter` הוא עמוד מורכב עם רבות queries ו־state; כדאי לפרק אותו ל־hooks ממוקדים.
+- `AnnotatedText` מחשב segments; על טקסטים ארוכים כדאי לשמור ב־memoization.
+- `StrongsPopup` עלול ליצור עודף קריאות לאותו קוד; כדאי להוסיף cache משותף.
+- `ScriptureAudit` עלול להיות כבד; אין להציג אותו אוטומטית בכל התקנה.
+
+### 7.13 נגישות
+
+- לכל אייקון שפועל כפעולה יש צורך להוסיף `aria-label`.
+- `StrongsText` משתמש ב־`role="button"` על `sup`; יש לוודא שיש טיפול מלא ב־Enter וב־Space.
+- ב־`BookOutline` יש אלמנטים בעלי `role="button"`; יש לוודא תמיכת מקלדת מלאה.
+- `Modal` נועל את גלילת body ומאזין ל־Escape, אך אין לו focus trap או שחזור focus.
+- `ConfirmDialog` ו־`RecordEditor` צריכים ניהול focus דומה.
+- יש לבדוק ניגודיות של הזהב על ירוק ושל טקסט muted.
+- אין להסתמך על צבע בלבד לסטטוס completed/missing/broken.
+
+### 7.14 נקודות דיבאג מומלצות
+
+כאשר פרק או פעולה אינה עובדים:
+
+1. בדוק את פרמטרי ה־URL:
+   - `book`
+   - `chapter`
+   - `verse`
+   - `lang`.
+2. בדוק ש־`getBookByNumber()` מזהה את הספר.
+3. בדוק אם הפרק נמצא ב־`KjvPlusChapter`, `LugandaChapter` או ב־offline.
+4. בדוק אם `verses` הוא JSON תקין.
+5. בדוק אם ה־source חיצוני החזיר verses או דף HTML.
+6. בדוק אם `fetchChapter` החזיר timeout או תשובה ריקה.
+7. בדוק אם ה־markers הם בתבנית `(G2424)`/`(H436)`.
+8. בדוק אם הקוד מנורמל ל־`G2424`/`H436`.
+9. בדוק את מצב המשתמש ואת `owner_email`.
+10. בדוק אם ה־React Query cache מחזיר נתונים ישנים.
+11. בדוק אם מדובר ב־admin server mode או direct mode.
+12. בדוק אם ה־service worker מחזיר גרסת shell ישנה.
+13. בדוק אם IndexedDB מכיל schema ישן.
+14. בדוק אם יש לבקשת מחיקת cache לפני אבחון התנהגות רשת.
+
+### 7.15 בעיות או סיכונים ידועים
+
+- `AdminAuth` מכיל סיסמה ו־reset key ברירת מחדל  -  יש להסיר מיידית.
+- `CommentThread` ו־`ThreadMessages` מנקים את הטקסט לפני שה־mutation הצליח; כשל עלול לאבד הודעה.
+- מנהי לייקים עלולים להיות מאבדי עדכון כאשר שני משתמשים לוחצים במקביל.
+- ה־parsing של `VerseOfDay` מנסה לחלץ את המספר הראשון מה־reference; עבור “John 3:16” זה אינו בהכרח מספר הספר.
+- התאמת תפילות מבוססת טקסט ב־`PassagePrayer` רגישה לשינויי כתיב ולשמות ספר.
+- `CrossRefEditor` עלול להפיק מפתחות React כפולים אם `splitRefs` מחזירה אותו reference יותר מפעם.
+- שאילתות כמו `["prayers"]` אינן כוללות תמיד את מצב האימות.
+- `ThemeProvider` טוען settings רק כשהמשתמש מחובר, גם אם `SiteSettings` קריא לציבור.
+- שמות hash של נכסים ב־`public/assets` אינם מתארים את משמעותם; יש לתחקן הפניות לפני מחיקה.
+- `LOGO_URL` ו־`manifest.json` מפנים ל־`app_73e21b4aa5684452`; הזזת האפליקציה ל־app ID אחר תדרוש עדכון.
+- `public/sw.js` משתמש בנתיבי root; בהתקנה עם prefix יש להתאים את `SHELL` ואת `start_url`.
+- קבצי `__trash` ו־`__url_fetch` עלולים להיכלל ב־source archive אך אינם אמורים להיכלל ב־deployment artifact.
+
+### 7.16 תכנון בדיקות מומלץ
+
+#### בדיקות יחידה
 
 - `compressChapters`.
+- `parseReference` ו־`parseOutlineRange`.
 - `matchesPassage`.
-- `parseReference`.
-- `parseOutlineRange`.
-- `normalizeStrongCode`.
-- `markStrongCodes`.
-- בדיקות תאריכים ו-streak.
-- merge של annotations.
+- נרמול קודי Strong’s.
+- validation של קובץ התפילות.
+- normalizers ו־natural keys.
+- חישוב streak ו־תאריכים.
+- מיזוג annotations מקומי ושרת.
 
-### Integration
+#### בדיקות אינטגרציה
 
-- טעינת פרק online ו-offline.
-- התקנת translation.
-- יצירת/מחיקת הערה.
-- התחברות והתנתקות.
-- session מנהל.
-- פרסום גילוי ותגובה.
-- הפעלת נגן והמשך השמעה בעת ניווט.
+- כניסת admin בשני המסלולים.
+- create/update/delete בכל אוסף ניהולי.
+- import חוזר של אותו קובץ בלי כפילויות.
+- טעינת פרק מ־entity, מ־source ומ־offline.
+- שמירת הדגשה לאחר reload.
+- התקנת תרגום והמשך לאחר כשל חלקי.
+- פעולות קהילה עם משתמש מחובר ולא מחובר.
 
-### Admin
+#### בדיקות E2E
 
-- אימות token פג או חתום באופן שגוי.
-- התקנה חלקית והשלמתה בהמשך.
-- פרק פגום.
-- הבדל במספר פסוקים בין תרגומים.
-- חסר ב-`StrongEntry`.
-
-### UI
-
-- מובייל ודסקטופ.
-- ניווט מקלדת.
-- modal focus.
-- שגיאות רשת.
-- מצב ריק.
-- אורך טקסט ארוך בעברית ולוגנדה.
+- מצב אורח לא נכשל כאשר `fse2.auth.me()` נכשל.
+- קורא מחובר רואה רק את הנתונים שלו.
+- מובייל, מקלדת ו־RTL.
+- PWA install ועבודה ללא רשת.
+- חזרה אחורה מתוך popup, modal ו־shared URL.
 
 ---
 
-# 8. מסלולי שינוי נפוצים
+## נספח: מילון מקוצר למפתחים חדשים
 
-## 8.1 הוספת סוג תוכן חדש
-
-לדוגמה, הוספת `StudyCourse`:
-
-1. צור entity תחת `entities/StudyCourse.json`.
-2. הוסף אותו ל-`MANAGED` ב-`functions/adminContent.js`.
-3. הוסף mapping ב-`functions/content.js`.
-4. הוסף reader ב-`lib/contentApi.js`.
-5. הוסף seed fallback ב-`lib/seedContent.js`.
-6. צור דף ציבורי.
-7. הוסף ניווט ב-`AppHeader` וב-`AppFooter`.
-8. הוסף ניהול ב-`AdminDashboard` וב-`FIELDS`.
-9. הוסף רשומות ל-`ReadingActivity` אם זו פעילות קריאה.
-10. הוסף טיפול ב-`privacy` ובמדיניות אחסון.
-
-## 8.2 הוספת פרק או ספר ל-Bible
-
-1. עדכן את `lib/bibleBooks.js`.
-2. עדכן את רשימת `BOOKS` ב:
-   - `functions/kjvInstall.js`.
-   - `functions/lugandaInstall.js`.
-   - `functions/scriptureAudit.js`.
-   - `cron/scriptureInstall.js`.
-3. עדכן את `BOOK_GUIDES`.
-4. עדכן את `BOOK_PRAYERS`.
-5. עדכן את `KEY_PASSAGES`.
-6. עדכן את `BOOK_STUDY_CONTENT`.
-7. הרץ installer.
-8. הרץ audit.
-9. בדוק chapter count ו-verse count.
-
-חשוב: אין להסתמך על מקור יחיד; במערכת הנוכחית הרשימות כפולות במספר מקומות.
-
-## 8.3 הוספת תרגום מקרא
-
-1. הוסף metadata ל-`VERSIONS` ב-`lib/versions.js`.
-2. הגדר:
-   - `id`.
-   - `language`.
-   - `translation`.
-   - `strongs`.
-   - קובץ או endpoint.
-3. הוסף store או namespace ב-`offlineDb.js`.
-4. עדכן את `fetchChapter` ב-`bibleApi.js`.
-5. עדכן את `bibleChapter` או צור function ייעודי.
-6. עדכן `Offline.jsx`.
-7. עדכן `VersionPicker` אם נדרש מסך התקנה מותאם.
-8. בדוק isolation בין מפתחות cache לכל תרגום.
-
-## 8.4 הוספת סוג פעילות חדש
-
-1. הוסף אותו ל-`ACTIVITY_TYPES`.
-2. הוסף icon mapping.
-3. הוסף את הסוג ל-`ICONS` ול-`TINTS` ב-`ActivityFeed`.
-4. ודא שהפעילות נשמרת עם `owner_email`.
-5. בדוק filters וספירות.
-
-## 8.5 שינוי עיצוב גלובלי
-
-עדיף לשנות:
-
-- `lib/theme.js` עבור ערכי ברירת מחדל.
-- `lib/brandCss.js` עבור משתני CSS ורכיבי מערכת.
-- `lib/themeContext.jsx` עבור עדכון דינמי מהניהול.
-
-יש להימנע מהחלפת צבעים ידנית בעשרות רכיבים.
-
----
-
-# 9. מסקנות וסיכונים מרכזיים
-
-1. **הקוד מבוסס מדדים מקומיים רבים.** שינוי בתוכן דורש עדכון ספריות seed, קבצי התקנה ורשימות ספרים.
-2. **המערכת מיועדת לעבודה ללא חיבור**, אך מסתמכת על cached chapter ועל content fallback.
-3. **המודל של אנסמבליות דורש attention**:
-   - כמה ישויות מבוססות על שם.
-   - `verses` נשמר כ-JSON.
-   - `highlighted_verses` נשמר כטקסט.
-4. **הרשאות צריכות להיות enforced בשרת**, גם אם הממשק מסנן לפי משתמש.
-5. **האימות של המנהל דורש הקשחה**, במיוחד סיסמת ברירת מחדל ושימוש ב-SHA-256.
-6. **התקנות המקרא עלולות להיות חלקיות**, ולכן יש להבדיל בין פרק חסר לפרק פגום.
-7. **ה-cache של service worker דורש versioning**.
-8. **מספר רכיבים משתמשים ב-role button על `span`**, ויש להשלים את התנהגות המקלדת.
-9. **ה-modal אינו מנהל focus trap**, דבר שעשוי להשפיע על נגישות.
-10. **המערכת תואמת במיוחד לתוכן דו-לשוני**, אך אין כלל validation אחיד לאורך כל ה-entities לגבי התאמת EN/LU.
-11. **הפרסום של KJV+, לוגנדה ו-Strong’s מבוסס מקורות חיצוניים**, ולכן נדרשים cache, retry, validation ו-audit.
-12. **העוגן הסופי הוא `/Chapter`**  -  כל פיצ’ר חייב להישאר נגיש משם בלי לאבד את הקשר של הפסוק, התרגום והסימונים.
+| מונח | משמעות במערכת |
+|---|---|
+| **Entity** | טבלת נתונים עם schema ו־ACL |
+| **Function** | פונקציית server לפעולות מעבר לגבול הדפדפן |
+| **Admin session** | התחברות נפרדת למנהל התוכן |
+| **Natural key** | מזהה עסקי לרשומה, לא `id` |
+| **Upsert** | יצירה או עדכון לפי מפתח טבעי |
+| **Fallback** | מקור חלופי כאשר המקור הראשי חסר או נכשל |
+| **Seed** | תוכן מובנה המשמש גיבוי לתוכן חי |
+| **Coverage** | כיסוי פרקים מותקנים/חסרים/שבורים |
+| **Annotation** | הדגשה או קו תחתון על טקסט וטווח offsets |
+| **StudyMark** | highlight/bookmark/note ברמת פסוק |
+| **Passage** | פסוק, טווח פסוקים או פרק שלם |
+| **Cross-reference** | קישור מפסוק מקור לפסוק יעד |
+| **Chapter key** | מפתח ספר + פרק המשמש להתקנה, cache ו־offline |
+| **Strong code** | מזהה מילה יוונית או עברית במילון Strong’s |
+| **Service worker** | proxy/cache של הדפדפן להתקנת PWA ולעבודה ללא רשת |
+| **Entity SDK** | ממשק FSe2 לקריאה וכתיבה ל־entities |
+| **Function gateway** | מנגנון הפעלת functions מתוך הדפדפן |
+| **Direct mode** | ניהול content ישיר דרך entity SDK ללא function gateway |
+| **Server mode** | ניהול content דרך `adminContent` עם session token |
+| **Grace period** | תקופה שבה session שפג זמנית עדיין מתקבל |
+| **Owner** | בעל הרשומה, לרוב לפי `owner_email` |
+| **RBAC** | הרשאות לפי role ולפי action |
+| **Seed key** | טבלת או store של מפתחות ראשוניים ל־IndexedDB |
