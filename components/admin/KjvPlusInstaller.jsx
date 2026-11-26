@@ -41,14 +41,10 @@ export default function KjvPlusInstaller() {
       // The session is kept fresh before every round, so a long install is
       // never cut off by the clock.
       await ensureFreshAdminToken();
-      if (!getAdminToken()) {
-        throw new Error(
-          "The content manager session is not open, so the installer cannot reach the server. Sign in to the content manager to install by hand; the background automation keeps filling the library."
-        );
-      }
+      const token = getAdminToken();
       const response = await fse2.functions.invoke("kjvInstall", {
         action,
-        token: getAdminToken(),
+        ...(token ? { token } : {}),
         ...payload
       });
       const data = response && response.data ? response.data : response;

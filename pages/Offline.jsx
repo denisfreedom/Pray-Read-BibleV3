@@ -7,7 +7,7 @@ import { offline, chapterKey, STORES } from "@/lib/offlineDb";
 import { BIBLE_BOOKS } from "@/lib/bibleBooks";
 import { bytesToMb } from "@/lib/format";
 import { chapterIsReadable, fetchChapter } from "@/lib/bibleApi";
-import { getVersion, getVersionOrDefault } from "@/lib/versions";
+import { VERSIONS, getVersion, getVersionOrDefault } from "@/lib/versions";
 import { normaliseCrossRef, normalisePassage } from "@/lib/prayerPassages";
 import {
   countOfflineStrong,
@@ -31,12 +31,12 @@ const SECTIONS = [
   { id: "verseOfDay", label: "Verse of the day", entity: "verseOfDay" }
 ];
 
-// The translations of the Bible that the reader can carry with them.
-const TRANSLATIONS = [
-  { id: "kjv", label: "King James Version", note: "The classic English text of every book of the Bible." },
-  { id: "kjvp", label: "King James Version with Strong's numbers", note: "English, with every Greek and Hebrew word marked." },
-  { id: "luganda", label: "Luganda Bible", note: "The whole Bible in Luganda." }
-];
+// The translations available in the reader's version registry.
+const TRANSLATIONS = VERSIONS.map((version) => ({
+  id: version.id,
+  label: version.name,
+  note: version.note
+}));
 
 /**
  * Asks the app for the meaning of a list of Strong's numbers.
@@ -109,7 +109,7 @@ export default function Offline() {
   const [status, setStatus] = useState("");
   const [failures, setFailures] = useState([]);
   const [bookScope, setBookScope] = useState("all");
-  const [translationIds, setTranslationIds] = useState(["kjv", "kjvp", "luganda"]);
+  const [translationIds, setTranslationIds] = useState(() => ["kjv", "kjvp", "luganda"]);
 
   const refresh = async () => {
     const next = {};
@@ -158,6 +158,12 @@ export default function Offline() {
     for (const translation of translations) {
       const record = getVersionOrDefault(translation);
       if (!record) continue;
+      if (["amp", "msg", "tpt"].includes(record.id)) {
+        failures.push(`${record.short}: this translation is not available from the configured Bible text source, so it cannot yet be downloaded for offline use.`);
+        done += books.reduce((sum, book) => sum + (book.chapters || 0), 0);
+        await tick();
+        continue;
+      }
       for (const book of books) {
         await offline
           .put("books", String(book.number), {
@@ -493,7 +499,7 @@ export default function Offline() {
                 ))}
               </div>
               <p style={{ margin: "8px 0 0", fontSize: "0.78rem", color: "var(--pr-body)" }}>
-                The whole Bible in all three translations is 3,567 chapters, so it takes a while on a slow
+                Downloading every selected translation across the whole Bible can take a while on a slow
                 connection. You can leave the page open: every chapter that is already stored is skipped, a
                 chapter that could not be reached is asked for again, and the download carries on where it
                 stopped.
