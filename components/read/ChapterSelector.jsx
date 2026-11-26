@@ -45,6 +45,16 @@ export default function ChapterSelector({
   const [popup, setPopup] = useState(null);
   const [annotations, setAnnotations] = useState([]);
   const sidebarRef = useRef(null);
+  // The size the reader chose in the chapter page is kept here too, so the
+  // book introduction is never smaller than the rest of the reading.
+  const [fontScale] = useState(() => {
+    try {
+      const value = Number(window.localStorage.getItem("pr_font_size"));
+      return value >= 0.85 && value <= 1.6 ? value : 1;
+    } catch {
+      return 1;
+    }
+  });
 
   const guide = useMemo(() => getBookGuide(book), [book]);
 
@@ -151,7 +161,7 @@ export default function ChapterSelector({
   }, [sidebarSignal]);
 
   return (
-    <div className="pr-sel-layout">
+    <div className="pr-sel-layout" style={{ "--pr-verse-scale": fontScale }}>
       <BookSidebar
         book={book}
         guide={guide}

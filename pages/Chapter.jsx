@@ -8,6 +8,7 @@ import { BIBLE_BOOKS, getBookByNumber } from "@/lib/bibleBooks";
 import { fetchChapter } from "@/lib/bibleApi";
 import { normalizeStrongCode } from "@/lib/strongs";
 import { getCrossReferences } from "@/lib/crossRefs";
+import { crossRefLabel, crossRefText, plainVerseText, verseShareText } from "@/lib/share";
 import { offline, markKey } from "@/lib/offlineDb";
 import { logReadingActivity } from "@/lib/activity";
 import { findPlanDay, recordReading } from "@/lib/readings";
@@ -25,7 +26,7 @@ import {
 import { PRAYERS } from "@/lib/seedContent";
 import { getChapterPrayer } from "@/lib/chapterStudy";
 import VerseActionBar from "@/components/read/VerseActionBar";
-import CrossRefList from "@/components/read/CrossRefList";
+import VerseCrossRefs from "@/components/read/VerseCrossRefs";
 import {
   fetchChapterCrossRefs,
   fetchChapterPassages,
@@ -34,7 +35,8 @@ import {
   normalisePassage,
   pickChapterPassage,
   pickCrossRefsForVerse,
-  pickPassageForVerse
+  pickPassageForVerse,
+  pickPassagesForVerse
 } from "@/lib/prayerPassages";
 import PassageTabs from "@/components/read/PassageTabs";
 import PassagePrayer, { matchesPassage } from "@/components/read/PassagePrayer";
@@ -44,12 +46,14 @@ import ChapterReaderPane from "@/components/read/ChapterReaderPane";
 import ChapterClosingPrayer from "@/components/read/ChapterClosingPrayer";
 import VersionPicker from "@/components/read/VersionPicker";
 import ShareSheet from "@/components/read/ShareSheet";
-import StrongsText from "@/components/read/StrongsText";
+import { strongsContent } from "@/components/read/StrongsText";
 import StrongsPopup from "@/components/read/StrongsPopup";
+import AnnotatedText from "@/components/read/AnnotatedText";
+import { selectionInside } from "@/lib/textSelection";
 import VersePopup from "@/components/read/VersePopup";
 import Spinner from "@/components/common/Spinner";
 import EmptyState from "@/components/common/EmptyState";
-import { AlertCircleIcon, ArrowLeftIcon, BookOpenIcon, BookmarkIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon, HeartHandshakeIcon, HighlighterIcon, ListIcon, Loader2Icon, MoonIcon, NotebookPenIcon, PauseIcon, PlayIcon, Share2Icon, SunIcon, TypeIcon, Volume2Icon } from "lucide-react";
+import { AlertCircleIcon, ArrowLeftIcon, BookOpenIcon, BookmarkIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon, HeartHandshakeIcon, HighlighterIcon, Link2Icon, ListIcon, Loader2Icon, MoonIcon, NotebookPenIcon, PauseIcon, PlayIcon, Share2Icon, SunIcon, TypeIcon, Volume2Icon } from "lucide-react";
 
 const HIGHLIGHT_COLORS = {
   yellow: "#fde68a",
@@ -132,13 +136,13 @@ export default function Chapter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedVerse, setSelectedVerse] = useState(null);
-  const [prayerVerse, setPrayerVerse] = useState(null);
+  // The prayer passage and the cross-references of a verse stay closed
+  // until the reader asks for them, and only one of them is open at a time.
+  const [openPanel, setOpenPanel] = useState(null);
   const [readingSaved, setReadingSaved] = useState(false);
   const [readDate, setReadDate] = useState("");
   const [marks, setMarks] = useState([]);
   const [localMarks, setLocalMarks] = useState([]);
-  // The verse whose cross-references are open in the reader.
-  const [crossRef, setCrossRef] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [showChapterGrid, setShowChapterGrid] = useState(false);
   const [toast, setToast] = useState("");
@@ -149,6 +153,7 @@ export default function Chapter() {
   // of the last chapter is never shown beside the verses of a new one.
   const [companionKey, setCompanionKey] = useState("");
   const [shareSections, setShareSections] = useState([]);
+  const [shareText, setShareText] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareVerse, setShareVerse] = useState(null);
   const [shareTitle, setShareTitle] = useState("");
@@ -491,6 +496,35 @@ export default function Chapter() {
     );
   }, [language, versionId, navigate]);
 
+  // The prayer passage and the cross-references of a verse stand under the
+  // verse itself, so the reader is taken to them instead of to a panel that
+  // covers the text of the chapter.
+  const scrollToVerseBlock = useCallback((verseNumber, kind) => {
+    window.setTimeout(() => {
+      const node = document.getElementById(`${kind}-block-${book.number}-${chapter}-${verseNumber}`);
+      if (!node) return;
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 90);
+  }, [book.number, chapter]);
+
+  // Opens the prayer passage or the cross-references of a verse. Opening
+  // one closes the other, so the reader never has two panels open at once.
+  const togglePanel = useCallback((verseNumber, kind) => {
+    setOpenPanel((current) =>
+      current && current.verse === verseNumber && current.kind === kind
+        ? null
+        : { verse: verseNumber, kind }
+    );
+  }, []);
+
+  const openPanelFor = useCallback(
+    (verseNumber, kind) => {
+      togglePanel(verseNumber, kind);
+      scrollToVerseBlock(verseNumber, kind);
+    },
+    [togglePanel, scrollToVerseBlock]
+  );
+
   const stepChapter = useCallback((delta) => {
     const target = chapter + delta;
     if (target < 1) return;
@@ -556,6 +590,12 @@ export default function Chapter() {
   const crossRefGroups = useMemo(() => groupCrossRefsByVerse(allCrossRefs), [allCrossRefs]);
   const crossRefsForVerse = (verseNumber) => pickCrossRefsForVerse(allCrossRefs, verseNumber);
   const passageForVerse = (verseNumber) => pickPassageForVerse(chapterPassages, verseNumber);
+  // The marks the reader has made on one block of text.
+  const annotationsFor = (blockId) =>
+    annotations.filter((annotation) => annotation.block_id === blockId);
+  // Every prayer passage written for a verse, so the reader sees the prayer
+  // of the verse they are on without opening anything.
+  const passagesForVerse = (verseNumber) => pickPassagesForVerse(chapterPassages, verseNumber);
   const chapterPassage = useMemo(() => pickChapterPassage(chapterPassages), [chapterPassages]);
   const audioUrl = `https://www.wordproaudio.org/bibles/app/audio/1/${book.number}/${chapter}.mp3`;
   const chapterTrack = useMemo(() => {
@@ -637,6 +677,9 @@ export default function Chapter() {
     return set;
   }, [readingRows, email, book.name]);
 
+  const shareUrlFor = (verseNumber) =>
+    `${window.location.origin}${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}&verse=${verseNumber}&lang=${language}&version=${versionId}`;
+
   const shareUrl = `${window.location.origin}${createPageUrl("Chapter")}?book=${book.number}&chapter=${chapter}${shareVerse ? `&verse=${shareVerse}` : ""}&lang=${language}&version=${versionId}`;
 
   const handleShare = async (verseNumber) => {
@@ -644,36 +687,45 @@ export default function Chapter() {
     if (!verse) return;
     setToast("Gathering the verse in both languages...");
     const companionRows = await loadCompanion();
-    setToast("");
     const companion = companionRows.find((row) => row.verse === verseNumber);
-    const english = language === "en" ? verse.text : companion ? companion.text : "";
-    const luganda = language === "lu" ? verse.text : companion ? companion.text : "";
-    const sections = [];
-    if (english) sections.push({ label: `${reference} ${verseNumber} (English)`, text: english });
-    if (luganda && luganda !== english) sections.push({ label: `${reference} ${verseNumber} (Luganda)`, text: luganda });
+    const english = plainVerseText(language === "en" ? verse.text : companion ? companion.text : "");
+    const luganda = plainVerseText(language === "lu" ? verse.text : companion ? companion.text : "");
+    // The prayer that belongs to the verse, in both languages.
+    const passage = passageForVerse(verseNumber);
     const prayer = prayerTextFor(verseNumber);
-    if (prayer.en) sections.push({ label: "Prayer passage (English)", text: prayer.en });
-    if (prayer.lu && prayer.lu !== prayer.en) {
-      sections.push({ label: "Prayer passage (Luganda)", text: prayer.lu });
-    }
+    const prayerEn = passage ? passage.prayer_en || "" : prayer.en || "";
+    const prayerLu = passage ? passage.prayer_lu || "" : prayer.lu || "";
+    // The cross-references of the verse, with the text of the verse they
+    // point at, so the scripture is shared in full.
+    setToast("Gathering the cross references...");
     const verseRefs = crossRefsForVerse(verseNumber);
-    if (verseRefs.length) {
-      const lines = verseRefs.map((row) => {
-        const target = getBookByNumber(row.ref_book_number);
-        const name = target ? target.name : "Passage";
-        const text = language === "lu" ? row.ref_text_lu || row.ref_text_en : row.ref_text_en || row.ref_text_lu;
-        const note = language === "lu" ? row.note_lu || row.note_en : row.note_en || row.note_lu;
-        return `${name} ${row.ref_chapter}:${row.ref_verse}${text ? ` - ${text}` : ""}${note ? ` (${note})` : ""}`;
-      });
-      sections.push({ label: "Cross-references", text: lines.join("\n") });
-    } else if (crossReferences.length) {
-      const lines = crossReferences.map((row) => `${getBookByNumber(row.book)?.name || "Passage"} ${row.chapter}:${row.verse} - ${row.text}`);
-      sections.push({ label: "Cross-references", text: lines.join("\n") });
+    const crossRefs = [];
+    for (const row of verseRefs) {
+      crossRefs.push({ label: crossRefLabel(row), text: await crossRefText(row) });
     }
-    setShareSections(sections);
+    if (!verseRefs.length && crossReferences.length) {
+      crossReferences.forEach((row) => {
+        crossRefs.push({
+          label: `${getBookByNumber(row.book)?.name || "Passage"} ${row.chapter}:${row.verse}`,
+          text: row.text || ""
+        });
+      });
+    }
+    setToast("");
+    const text = verseShareText({
+      reference: `${reference}:${verseNumber}`,
+      english,
+      luganda,
+      prayerEn,
+      prayerLu,
+      crossRefs: crossRefs.filter((row) => row.label || row.text),
+      url: shareUrlFor(verseNumber)
+    });
+    setShareText(text);
+    setShareSections([]);
     setShareVerse(verseNumber);
-    setShareTitle(`Share ${reference} ${verseNumber}`);
-    setShareSubtitle("The verse in both languages, the prayer passage and the cross references.");
+    setShareTitle(`Share ${reference}:${verseNumber}`);
+    setShareSubtitle("The verse in both languages, the prayer passage and the cross references in full.");
     setShareOpen(true);
   };
 
@@ -681,6 +733,7 @@ export default function Chapter() {
     const opening = verses.slice(0, 2).map((row) => `${row.verse}. ${row.text}`).join(" ");
     const excerpt = opening.length > 300 ? `${opening.slice(0, 297).trim()}…` : opening;
     setShareSections([{ label: `${reference} (${version.short})`, text: excerpt }]);
+    setShareText("");
     setShareVerse(null);
     setShareTitle(`Share ${reference}`);
     setShareSubtitle("The opening of the chapter and the link to read it all.");
@@ -700,6 +753,7 @@ export default function Chapter() {
       sections.push({ label: `${title}${prayer.ref ? `  -  ${prayer.ref}` : ""}`, text: clip(luganda) });
     }
     setShareSections(sections);
+    setShareText("");
     setShareVerse(1);
     setShareTitle("Share the closing prayer");
     setShareSubtitle("The prayer of this chapter, so someone else can pray it with you.");
@@ -715,7 +769,7 @@ export default function Chapter() {
   const handleVersionChange = (id) => {
     setVersionId(id);
     setSelectedVerse(null);
-    setPrayerVerse(null);
+    setOpenPanel(null);
     setHasStrongs(false);
     if (id === "luganda") {
       if (langMode === "en") setLangMode("lu");
@@ -756,7 +810,7 @@ export default function Chapter() {
   };
 
   return (
-    <div className="pr-chapter-page" data-pr-theme={theme}>
+    <div className="pr-chapter-page" data-pr-theme={theme} style={{ "--pr-verse-scale": fontScale }}>
       <section className="pr-chapter-hero">
         <div className="pr-container">
           <div className="pr-chapter-hero-top">
@@ -947,6 +1001,13 @@ export default function Chapter() {
                       const background = highlightFor(verse.verse);
                       const selected = selectedVerse === verse.verse;
                       const texts = textFor(verse);
+                      const importedPassages = passagesForVerse(verse.verse);
+                      const verseCrossRefs = crossRefsForVerse(verse.verse);
+                      const englishBlock = `verse-en-${book.number}-${chapter}-${verse.verse}`;
+                      const lugandaBlock = `verse-lu-${book.number}-${chapter}-${verse.verse}`;
+                      const englishContent = strongsContent(texts.english, handleStrongClick);
+                      const prayerOpen = Boolean(openPanel && openPanel.verse === verse.verse && openPanel.kind === "prayer");
+                      const crossRefsOpen = Boolean(openPanel && openPanel.verse === verse.verse && openPanel.kind === "crossrefs");
                       return (
                         <div key={verse.verse}>
                           {selected ? (
@@ -955,18 +1016,28 @@ export default function Chapter() {
                               onHighlight={toggleHighlight}
                               onBookmark={toggleBookmark}
                               onNote={(number, text) => saveMark("note", number, { note_text: text })}
-                              onCrossRef={() => setCrossRef((current) => (current === verse.verse ? null : verse.verse))}
-                              onPrayer={(number) => setPrayerVerse((current) => current === number ? null : number)}
+                              onCrossRef={() => openPanelFor(verse.verse, "crossrefs")}
+                              onPrayer={(number) => openPanelFor(number, "prayer")}
                               onCommentary={handleCommentary}
                               onShare={handleShare}
                               onClose={() => setSelectedVerse(null)}
                             />
                           ) : null}
 
-                          <button
-                            type="button"
+                          <div
                             className={selected ? "pr-verse pr-verse-active" : "pr-verse"}
-                            onClick={() => setSelectedVerse(selected ? null : verse.verse)}
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              // A drag over the words is a selection, not a tap.
+                              if (selectionInside(event.currentTarget)) return;
+                              setSelectedVerse(selected ? null : verse.verse);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              setSelectedVerse(selected ? null : verse.verse);
+                            }}
                             id={`verse-${verse.verse}`}
                           >
                             <span className="pr-verse-number">
@@ -983,7 +1054,17 @@ export default function Chapter() {
                               }}
                             >
                               {showEnglish ? (
-                                <StrongsText text={texts.english} onCodeClick={handleStrongClick} />
+                                <AnnotatedText
+                                  blockId={englishBlock}
+                                  section="verse"
+                                  text={englishContent.plain}
+                                  nodes={englishContent.nodes}
+                                  annotations={annotationsFor(englishBlock)}
+                                  onAnnotate={handleAnnotate}
+                                  onRemove={handleRemove}
+                                  as="span"
+                                  className="pr-verse-en"
+                                />
                               ) : null}
                               {showEnglish && !texts.english && showLuganda ? (
                                 <span className="pr-verse-missing">The English text is not yet available for this verse.</span>
@@ -994,7 +1075,16 @@ export default function Chapter() {
                                   {texts.luganda ? (
                                     <span className="pr-verse-lu">
                                       <span className="pr-verse-lu-badge">LU</span>
-                                      {texts.luganda}
+                                      <AnnotatedText
+                                        blockId={lugandaBlock}
+                                        section="verse"
+                                        text={texts.luganda}
+                                        annotations={annotationsFor(lugandaBlock)}
+                                        onAnnotate={handleAnnotate}
+                                        onRemove={handleRemove}
+                                        as="span"
+                                        className="pr-verse-lu-text"
+                                      />
                                     </span>
                                   ) : (
                                     <span className="pr-verse-missing">The Luganda text is not yet available for this verse.</span>
@@ -1002,22 +1092,75 @@ export default function Chapter() {
                                 </>
                               ) : null}
                             </span>
-                          </button>
+                          </div>
 
-                          {prayerVerse === verse.verse ? (
-                            <PassagePrayer
-                              book={book.name}
-                              chapter={chapter}
-                              verse={verse.verse}
-                              language={displayLanguage}
-                              annotations={annotations}
-                              passages={passageForVerse(verse.verse) ? [passageForVerse(verse.verse)] : []}
-                              fallback={chapterPrayers[0] || null}
-                              onAnnotate={handleAnnotate}
-                              onRemove={handleRemove}
-                              onOpenPassage={handleOpenPassage}
-                              onClose={() => setPrayerVerse(null)}
-                            />
+                          <div className="pr-verse-tools">
+                            <button
+                              type="button"
+                              className={`pr-verse-tool${prayerOpen ? " is-active" : ""}`}
+                              aria-expanded={prayerOpen}
+                              onClick={() => togglePanel(verse.verse, "prayer")}
+                            >
+                              <HeartHandshakeIcon className="h-4 w-4" aria-hidden="true" />
+                              Prayer passage
+                            </button>
+                            {verseCrossRefs.length ? (
+                              <button
+                                type="button"
+                                className={`pr-verse-tool${crossRefsOpen ? " is-active" : ""}`}
+                                aria-expanded={crossRefsOpen}
+                                onClick={() => togglePanel(verse.verse, "crossrefs")}
+                              >
+                                <Link2Icon className="h-4 w-4" aria-hidden="true" />
+                                Cross-references ({verseCrossRefs.length})
+                              </button>
+                            ) : null}
+                          </div>
+
+                          {prayerOpen ? (
+                            importedPassages.length ? (
+                              <PassagePrayer
+                                inline
+                                anchorId={`prayer-block-${book.number}-${chapter}-${verse.verse}`}
+                                book={book.name}
+                                chapter={chapter}
+                                verse={verse.verse}
+                                language={displayLanguage}
+                                annotations={annotations}
+                                passages={importedPassages}
+                                onAnnotate={handleAnnotate}
+                                onRemove={handleRemove}
+                                onOpenPassage={handleOpenPassage}
+                              />
+                            ) : (
+                              <PassagePrayer
+                                anchorId={`prayer-block-${book.number}-${chapter}-${verse.verse}`}
+                                book={book.name}
+                                chapter={chapter}
+                                verse={verse.verse}
+                                language={displayLanguage}
+                                annotations={annotations}
+                                passages={[]}
+                                fallback={closingPrayer}
+                                onAnnotate={handleAnnotate}
+                                onRemove={handleRemove}
+                                onOpenPassage={handleOpenPassage}
+                                onClose={() => togglePanel(verse.verse, "prayer")}
+                              />
+                            )
+                          ) : null}
+
+                          {crossRefsOpen ? (
+                            <div id={`crossrefs-block-${book.number}-${chapter}-${verse.verse}`}>
+                              <VerseCrossRefs
+                                verse={verse.verse}
+                                language={displayLanguage}
+                                versionId={versionId}
+                                references={verseCrossRefs}
+                                anchorId={`crossrefs-block-${book.number}-${chapter}-${verse.verse}`}
+                                onOpenReference={handleOpenCrossRef}
+                              />
+                            </div>
                           ) : null}
 
                           {noteFor(verse.verse) ? (
@@ -1049,6 +1192,9 @@ export default function Chapter() {
                 chapter={chapter}
                 prayer={closingPrayer}
                 mode={langMode}
+                annotations={annotations}
+                onAnnotate={handleAnnotate}
+                onRemove={handleRemove}
                 onShare={handleSharePrayer}
                 onPrayAgain={prayAgain}
                 onOpenPassage={handleOpenPassage}
@@ -1106,16 +1252,6 @@ export default function Chapter() {
         <PassageTabs book={book} chapter={chapter} reference={reference} language={displayLanguage} />
       </div>
 
-      {crossRef ? (
-        <CrossRefList
-          verse={crossRef}
-          language={displayLanguage}
-          references={crossRefsForVerse(crossRef)}
-          chapterGroups={crossRefGroups}
-          onClose={() => setCrossRef(null)}
-        />
-      ) : null}
-
       {popup ? (
         <VersePopup
           passage={popup}
@@ -1131,6 +1267,7 @@ export default function Chapter() {
         title={shareTitle || `Share ${reference}`}
         subtitle={shareSubtitle}
         sections={shareSections}
+        text={shareText}
         url={shareUrl}
         onClose={() => setShareOpen(false)}
       />

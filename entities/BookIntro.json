@@ -1,0 +1,22 @@
+{
+  "name": "BookIntro",
+  "description": "The introduction written for one book and the prayer that closes that book, in English and Luganda. Imported book by book from the prayer passage JSON files.",
+  "fields": [
+    {"name": "book_number", "type": "number", "required": true, "label": "Book number (1..66)"},
+    {"name": "book_name", "type": "string", "label": "Book"},
+    {"name": "title_en", "type": "string", "label": "Title (EN)"},
+    {"name": "title_lu", "type": "string", "label": "Title (LU)"},
+    {"name": "intro_en", "type": "string", "label": "Introduction (EN)"},
+    {"name": "intro_lu", "type": "string", "label": "Introduction (LU)"},
+    {"name": "closing_prayer_en", "type": "string", "label": "Closing prayer of the book (EN)"},
+    {"name": "closing_prayer_lu", "type": "string", "label": "Closing prayer of the book (LU)"},
+    {"name": "source", "type": "string", "label": "Source"}
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      {"actions": ["read"], "subject": {"roles": ["*"]}},
+      {"actions": ["create", "update", "delete"], "subject": {"roles": ["owner", "admin"]}}
+    ]
+  }
+}

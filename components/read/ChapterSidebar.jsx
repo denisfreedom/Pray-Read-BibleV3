@@ -10,7 +10,9 @@ import {
 } from "@/lib/chapterStudy";
 import { parseReference } from "@/lib/scriptureRefs";
 import { selectionInside } from "@/lib/textSelection";
+import { fetchChapterIntro } from "@/lib/chapterIntros";
 import AnnotatedText from "@/components/read/AnnotatedText";
+import CrossRefScripture, { referenceLabel } from "@/components/read/CrossRefScripture";
 import { BookOpenIcon, HeartHandshakeIcon, Link2Icon, MessageCircleIcon, Icon } from "lucide-react";
 import { getBookByNumber } from "@/lib/bibleBooks";
 
@@ -75,6 +77,13 @@ export default function ChapterSidebar({
   const { data: prayerRows = EMPTY } = useQuery({
     queryKey: ["chapterPrayers"],
     queryFn: () => fetchPublicCollection("prayers")
+  });
+  // The introduction the content manager imported for this chapter. When it
+  // is there it stands in place of the summary the app builds on its own.
+  const { data: importedIntro = null } = useQuery({
+    queryKey: ["chapterIntro", bookNumber, chapter],
+    queryFn: () => fetchChapterIntro(bookNumber, chapter),
+    enabled: !!bookNumber && !!chapter
   });
 
   const intro = useMemo(
@@ -143,17 +152,47 @@ export default function ChapterSidebar({
             </div>
           </header>
           <div className="pr-chapter-scroll">
-            <h3 className="pr-chapter-heading">{intro.heading}</h3>
-            {intro.range ? <p className="pr-chapter-range">{intro.range}</p> : null}
-            <AnnotatedText
-              blockId={introBlock}
-              section="chapter-intro"
-              text={intro.body}
-              annotations={forBlock(introBlock)}
-              onAnnotate={onAnnotate}
-              onRemove={onRemove}
-              className="pr-chapter-body"
-            />
+            {importedIntro ? (
+              <>
+                <h3 className="pr-chapter-heading">
+                  {importedIntro.title_en || `The introduction to ${book.name} ${chapter}`}
+                </h3>
+                <AnnotatedText
+                  blockId={introBlock}
+                  section="chapter-intro"
+                  text={importedIntro.intro_en}
+                  annotations={forBlock(introBlock)}
+                  onAnnotate={onAnnotate}
+                  onRemove={onRemove}
+                  className="pr-chapter-body"
+                />
+                {importedIntro.intro_lu && language !== "en" ? (
+                  <AnnotatedText
+                    blockId={`${introBlock}-lu`}
+                    section="chapter-intro"
+                    text={importedIntro.intro_lu}
+                    annotations={forBlock(`${introBlock}-lu`)}
+                    onAnnotate={onAnnotate}
+                    onRemove={onRemove}
+                    className="pr-chapter-body is-lu"
+                  />
+                ) : null}
+              </>
+            ) : (
+              <>
+                <h3 className="pr-chapter-heading">{intro.heading}</h3>
+                {intro.range ? <p className="pr-chapter-range">{intro.range}</p> : null}
+                <AnnotatedText
+                  blockId={introBlock}
+                  section="chapter-intro"
+                  text={intro.body}
+                  annotations={forBlock(introBlock)}
+                  onAnnotate={onAnnotate}
+                  onRemove={onRemove}
+                  className="pr-chapter-body"
+                />
+              </>
+            )}
             {intro.anchor ? (
               <blockquote className="pr-chapter-anchor">
                 <span className="pr-chapter-anchor-verse" translate="no">
@@ -408,13 +447,15 @@ export default function ChapterSidebar({
                         className="pr-chapter-ref"
                         onClick={() => onOpenCrossRef && onOpenCrossRef(row)}
                       >
-                        {name} {row.ref_chapter}:{row.ref_verse}
+                        {referenceLabel(row) || `${name} ${row.ref_chapter}:${row.ref_verse}`}
                       </button>
                       {text ? (
                         <p className="pr-chapter-body" style={{ marginTop: 6 }}>
                           {text}
                         </p>
-                      ) : null}
+                      ) : (
+                        <CrossRefScripture row={row} language={language} versionId="kjv" />
+                      )}
                       {note ? (
                         <p className="pr-chapter-hint" style={{ marginTop: 4 }}>
                           {note}

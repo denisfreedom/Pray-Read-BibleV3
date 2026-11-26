@@ -16,6 +16,7 @@ import PrayersPanel from "@/components/admin/PrayersPanel";
 import JsonImportPanel from "@/components/admin/JsonImportPanel";
 import PrayerCrossRefImport from "@/components/admin/PrayerCrossRefImport";
 import CollectionsPanel from "@/components/admin/CollectionsPanel";
+import PassagesPanel from "@/components/admin/PassagesPanel";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon, HeartHandshakeIcon, ListIcon } from "lucide-react";
 
@@ -400,7 +401,7 @@ export default function AdminDashboard() {
 
           {section === "prayers" ? <PrayersPanel mode="library" /> : null}
 
-          {section === "passages" ? <PrayersPanel mode="passages" /> : null}
+          {section === "passages" ? <PassagesPanel /> : null}
 
           {section === "import" ? (
             <div>

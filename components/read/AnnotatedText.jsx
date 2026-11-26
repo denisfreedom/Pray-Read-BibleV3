@@ -162,7 +162,7 @@ export default function AnnotatedText({
       <Tag
         ref={containerRef}
         className={className}
-        style={style}
+        style={{ ...style, userSelect: "text", WebkitUserSelect: "text" }}
         data-block={blockId}
         onMouseUp={readSelection}
         onKeyUp={readSelection}
@@ -196,6 +196,8 @@ export default function AnnotatedText({
           style={{ top: toolbarTop, left: toolbarLeft }}
           role="toolbar"
           aria-label="Mark this text"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
         >
           <span className="pr-annot-toolbar-icon" aria-hidden="true">
             <HighlighterIcon className="h-4 w-4" />

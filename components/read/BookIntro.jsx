@@ -1,8 +1,10 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import AnnotatedText from "@/components/read/AnnotatedText";
 import { getKeyPassages } from "@/lib/keyPassages";
 import { parseReference } from "@/lib/scriptureRefs";
 import { selectionInside } from "@/lib/textSelection";
+import { fetchBookIntro } from "@/lib/bookIntro";
 
 const ENCOURAGEMENT =
   "Read it slowly, one chapter at a time, and let each chapter become a conversation with God rather than a line to get through.";
@@ -10,6 +12,9 @@ const ENCOURAGEMENT =
 /**
  * The book introduction. The text can be marked by the reader, and the key
  * passages open in the scripture popup so nothing has to be left behind.
+ *
+ * The introduction that was imported for the book stands in place of the
+ * summary the app builds on its own.
  */
 export default function BookIntro({
   book,
@@ -24,6 +29,13 @@ export default function BookIntro({
   const passages = getKeyPassages(book);
   const forBlock = (blockId) =>
     annotations.filter((annotation) => annotation.block_id === blockId);
+
+  const { data: imported } = useQuery({
+    queryKey: ["bookIntro", book.number],
+    queryFn: () => fetchBookIntro(book.number)
+  });
+  const importedIntro = imported ? imported.intro_en || imported.intro_lu : "";
+  const intro = importedIntro || guide.intro;
 
   const openReference = (label, event) => {
     if (selectionInside(event.currentTarget)) return;
@@ -49,7 +61,7 @@ export default function BookIntro({
         as="p"
         blockId="intro-main"
         section="intro"
-        text={guide.intro}
+        text={intro}
         annotations={forBlock("intro-main")}
         onAnnotate={onAnnotate}
         onRemove={onRemove}

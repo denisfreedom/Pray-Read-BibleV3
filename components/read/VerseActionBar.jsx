@@ -93,8 +93,8 @@ export default function VerseActionBar({
             key={color.id}
             type="button"
             onClick={() => onHighlight(verse.verse, color.id)}
-            title={color.label}
-            aria-label={`Highlight ${color.label}`}
+            title={`Highlight the whole verse in ${color.label}`}
+            aria-label={`Highlight the whole verse in ${color.label}`}
             style={{
               width: 30,
               height: 30,
@@ -118,6 +118,17 @@ export default function VerseActionBar({
           <NotebookPenIcon className="h-4 w-4" /> Add note
         </button>
       </div>
+
+      <p
+        style={{
+          margin: "10px 0 0",
+          fontSize: "calc(0.78rem * var(--pr-verse-scale, 1))",
+          color: "var(--pr-body)"
+        }}
+      >
+        <HighlighterIcon className="h-4 w-4" style={{ display: "inline", verticalAlign: "-2px" }} /> Drag over the words you
+        want to mark to highlight or underline only that part of the verse.
+      </p>
 
       {showNote ? (
         <div style={{ marginTop: 12 }}>

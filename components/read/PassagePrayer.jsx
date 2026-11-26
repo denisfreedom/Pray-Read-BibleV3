@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { PRAYERS } from "@/lib/seedContent";
@@ -34,12 +34,19 @@ export default function PassagePrayer({
   annotations = [],
   fallback = null,
   passages = [],
+  inline = false,
+  anchorId = "",
   onAnnotate,
   onRemove,
   onOpenPassage,
   onClose
 }) {
   const [mode, setMode] = useState(language === "lu" ? "lu" : "en");
+
+  // The card follows the language the reader is reading in.
+  useEffect(() => {
+    setMode(language === "lu" ? "lu" : "en");
+  }, [language]);
 
   const { data: rows = [] } = useQuery({
     queryKey: ["prayers"],
@@ -101,6 +108,7 @@ export default function PassagePrayer({
   return (
     <div
       className="pr-card"
+      id={anchorId || undefined}
       style={{
         padding: 14,
         marginBottom: 12,
@@ -111,7 +119,7 @@ export default function PassagePrayer({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <span className="pr-eyebrow">
           <HeartHandshakeIcon className="h-4 w-4" style={{ display: "inline", marginInlineEnd: 6 }} />
-          Prayer for this passage
+          {inline ? "Prayer passage" : "Prayer for this passage"}
         </span>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
@@ -140,14 +148,16 @@ export default function PassagePrayer({
           >
             LU
           </button>
-          <button type="button" className="pr-icon-btn" style={{ width: 32, height: 32 }} onClick={onClose} aria-label="Close prayer">
-            <XIcon className="h-4 w-4" />
-          </button>
+          {inline ? null : (
+            <button type="button" className="pr-icon-btn" style={{ width: 32, height: 32 }} onClick={onClose} aria-label="Close prayer">
+              <XIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
       {shown.length === 0 ? (
-        <p style={{ margin: "10px 0 0", fontSize: "0.88rem" }}>
+        <p style={{ margin: "10px 0 0", fontSize: "calc(0.88rem * var(--pr-verse-scale, 1))" }}>
           No prayer from the library is attached to {book} {chapter}
           {verse ? `:${verse}` : ""} yet. Write your own in the prayer journal.
         </p>
@@ -157,8 +167,11 @@ export default function PassagePrayer({
           const body = mode === "lu" ? row.bodyLu || row.bodyEn : row.bodyEn || row.bodyLu;
           return (
             <div key={row.key || index} style={{ marginTop: 12 }}>
-              <p className="pr-heading" style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem" }}>
-                {mode === "lu" ? row.titleLu || row.title : row.title}
+              <p
+                className="pr-heading"
+                style={{ margin: 0, fontWeight: 800, fontSize: "calc(0.95rem * var(--pr-verse-scale, 1))" }}
+              >
+                {mode === "lu" ? row.titleLu || row.title : row.title || "The prayer for this passage"}
               </p>
               {row.ref ? (
                 <button type="button" className="pr-passage-prayer-ref" onClick={() => openReference(row.ref)}>
@@ -173,7 +186,7 @@ export default function PassagePrayer({
                 onAnnotate={onAnnotate}
                 onRemove={onRemove}
                 className="pr-passage-prayer-body"
-                style={{ margin: "8px 0 0", fontSize: "0.92rem", lineHeight: 1.65, whiteSpace: "pre-line" }}
+                style={{ margin: "8px 0 0", lineHeight: 1.65 }}
               />
             </div>
           );

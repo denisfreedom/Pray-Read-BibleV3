@@ -7,30 +7,84 @@ import React, { useMemo } from "react";
 
 const TOKEN = /\(([GH]\d{1,5})\)/g;
 
-export default function StrongsText({ text, className = "", onCodeClick }) {
-  const parts = useMemo(() => {
-    const value = String(text || "");
-    const out = [];
-    if (!value) return out;
-    TOKEN.lastIndex = 0;
-    let cursor = 0;
-    let word = "";
-    let match = TOKEN.exec(value);
-    while (match) {
-      if (match.index > cursor) {
-        const chunk = value.slice(cursor, match.index);
-        const found = chunk.match(/([A-Za-z'’-]+)[^A-Za-z'’-]*$/);
-        if (found) word = found[1];
-        out.push({ type: "text", value: chunk });
-      }
-      out.push({ type: "code", value: match[1], word });
-      cursor = match.index + match[0].length;
-      match = TOKEN.exec(value);
+/** The parts of a verse that carries Strong's numbers. */
+export const parseStrongs = (text) => {
+  const value = String(text || "");
+  const out = [];
+  if (!value) return out;
+  TOKEN.lastIndex = 0;
+  let cursor = 0;
+  let word = "";
+  let match = TOKEN.exec(value);
+  while (match) {
+    if (match.index > cursor) {
+      const chunk = value.slice(cursor, match.index);
+      const found = chunk.match(/([A-Za-z'’-]+)[^A-Za-z'’-]*$/);
+      if (found) word = found[1];
+      out.push({ type: "text", value: chunk });
     }
-    TOKEN.lastIndex = 0;
-    if (cursor < value.length) out.push({ type: "text", value: value.slice(cursor) });
-    return out;
-  }, [text]);
+    out.push({ type: "code", value: match[1], word });
+    cursor = match.index + match[0].length;
+    match = TOKEN.exec(value);
+  }
+  TOKEN.lastIndex = 0;
+  if (cursor < value.length) out.push({ type: "text", value: value.slice(cursor) });
+  return out;
+};
+
+/**
+ * The plain text of a verse and the nodes that draw its Strong's numbers.
+ *
+ * The plain text is exactly what the reader sees on the screen, so a mark
+ * that is placed on a part of the verse lands on the same words the next
+ * time the chapter is opened.
+ */
+export const strongsContent = (text, onCodeClick) => {
+  const parts = parseStrongs(text);
+  let plain = "";
+  let offset = 0;
+  const nodes = [];
+
+  parts.forEach((part, index) => {
+    const start = offset;
+    plain += part.value;
+    offset += part.value.length;
+    if (part.type !== "code") return;
+    const code = part.value;
+    const spoken = part.word;
+    const open = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      if (typeof onCodeClick === "function") onCodeClick(code, spoken);
+    };
+    nodes.push({
+      start,
+      end: offset,
+      render: (
+        <sup
+          key={`code-${index}`}
+          className="pr-strongs"
+          translate="no"
+          role="button"
+          tabIndex={0}
+          title={`Strong's ${code}`}
+          onClick={open}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            open(event);
+          }}
+        >
+          {code}
+        </sup>
+      )
+    });
+  });
+
+  return { plain, nodes };
+};
+
+export default function StrongsText({ text, className = "", onCodeClick }) {
+  const parts = useMemo(() => parseStrongs(text), [text]);
 
   if (!parts.length) return null;
 

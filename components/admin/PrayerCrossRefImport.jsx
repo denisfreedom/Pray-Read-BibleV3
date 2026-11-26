@@ -63,6 +63,7 @@ export default function PrayerCrossRefImport() {
 
   const installedPassages = (installed && installed.passages) || [];
   const installedCrossRefs = (installed && installed.crossReferences) || [];
+  const installedIntros = (installed && installed.chapterIntros) || [];
 
   const onFile = (event) => {
     const file = event.target.files && event.target.files[0];
@@ -143,12 +144,16 @@ export default function PrayerCrossRefImport() {
     if (!checked || !checked.ok) return;
     setBusy(true);
     setReport(null);
-    setProgress({ done: 0, total: checked.prayers.length + checked.crossReferences.length });
+    setProgress({
+      done: 0,
+      total: checked.prayers.length + checked.crossReferences.length + checked.chapterIntros.length
+    });
     try {
       const result = await importPrayerFile({
         file: checked.file,
         prayers: checked.prayers,
         crossReferences: checked.crossReferences,
+        chapterIntros: checked.chapterIntros,
         onProgress: setProgress
       });
       setReport(result);
@@ -157,7 +162,8 @@ export default function PrayerCrossRefImport() {
       setReport({
         summary: {
           prayers: { inserted: 0, updated: 0, skipped: 0, failed: 0, total: 0 },
-          crossReferences: { inserted: 0, updated: 0, skipped: 0, failed: 0, total: 0 }
+          crossReferences: { inserted: 0, updated: 0, skipped: 0, failed: 0, total: 0 },
+          chapterIntros: { inserted: 0, updated: 0, skipped: 0, failed: 0, total: 0 }
         },
         errors: [error.message || "The import stopped early."],
         warnings: []
@@ -298,7 +304,8 @@ export default function PrayerCrossRefImport() {
 
           <p style={{ margin: "0 0 12px", fontSize: "0.88rem" }}>
             {checked.prayers.length} prayer{checked.prayers.length === 1 ? "" : "s"}, {checked.crossReferences.length}{" "}
-            cross-reference{checked.crossReferences.length === 1 ? "" : "s"}, {checked.errors.length} error
+            cross-reference{checked.crossReferences.length === 1 ? "" : "s"}, {checked.chapterIntros.length} chapter
+            introduction{checked.chapterIntros.length === 1 ? "" : "s"}, {checked.errors.length} error
             {checked.errors.length === 1 ? "" : "s"}
           </p>
 
@@ -492,6 +499,12 @@ export default function PrayerCrossRefImport() {
             {report.summary.prayers.skipped} skipped, {report.summary.prayers.failed} failed. Cross-references:{" "}
             {report.summary.crossReferences.inserted} new, {report.summary.crossReferences.updated} changed,{" "}
             {report.summary.crossReferences.skipped} skipped, {report.summary.crossReferences.failed} failed.
+            {report.summary.chapterIntros ? (
+              <>
+                {" "}Chapter introductions: {report.summary.chapterIntros.inserted} new,{" "}
+                {report.summary.chapterIntros.updated} changed, {report.summary.chapterIntros.failed} failed.
+              </>
+            ) : null}
           </p>
           {report.errors.length ? (
             <div className="pr-error">
@@ -559,10 +572,32 @@ export default function PrayerCrossRefImport() {
         ) : (
           <>
             <p style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>
-              {installedPassages.length} prayer passage{installedPassages.length === 1 ? "" : "s"} and{" "}
-              {installedCrossRefs.length} cross-reference{installedCrossRefs.length === 1 ? "" : "s"} in{" "}
+              {installedPassages.length} prayer passage{installedPassages.length === 1 ? "" : "s"},{" "}
+              {installedCrossRefs.length} cross-reference{installedCrossRefs.length === 1 ? "" : "s"} and{" "}
+              {installedIntros.length} chapter introduction{installedIntros.length === 1 ? "" : "s"} in{" "}
               {bookNameFor(bookNumber)} {chapter}.
             </p>
+
+            {installedIntros.length ? (
+              <ul className="pr-list-reset" style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                {installedIntros.map((row, index) => (
+                  <li
+                    key={row.id || index}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid var(--pr-border)",
+                      background: "var(--pr-ivory-soft)"
+                    }}
+                  >
+                    <p style={{ margin: "0 0 4px", fontSize: "0.85rem", fontWeight: 700 }}>
+                      The chapter introduction
+                    </p>
+                    <p style={{ margin: 0, fontSize: "0.8rem" }}>{truncate(row.intro_en, 220)}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             {installedPassages.length ? (
               <ul className="pr-list-reset" style={{ display: "grid", gap: 8, marginBottom: 12 }}>

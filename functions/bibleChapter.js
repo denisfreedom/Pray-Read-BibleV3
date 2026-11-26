@@ -103,6 +103,44 @@ const strongsUrl = (bookNumber, chapter) =>
   `https://bolls.life/get-chapter/KJV/${bookNumber}/${chapter}?bolls_format=true`;
 
 /**
+ * The plain King James text of a whole chapter.
+ *
+ * The bible-api.com source answers a book that has one chapter with a
+ * single verse, so the chapter of such a book is taken from the source
+ * that carries the Strong's text, with the numbers taken away.
+ */
+const parsePlainChapter = (raw) => {
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw && raw.verses) ? raw.verses : [];
+  const verses = [];
+  for (const row of list) {
+    if (!row) continue;
+    const number = Number(row.verse);
+    const text = decodeEntities(
+      String(row.text || "")
+        .replace(/<S>[\s\S]*?<\/S>/gi, " ")
+        .replace(/<sup[^>]*>[\s\S]*?<\/sup>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+    )
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([.,;:!?])/g, "$1")
+      .trim();
+    if (!Number.isFinite(number) || !text) continue;
+    verses.push({ verse: number, text });
+  }
+  return verses;
+};
+
+const loadPlainChapter = async (bookNumber, chapter) => {
+  const response = await fetchWithTimeout(strongsUrl(bookNumber, chapter), {
+    headers: { "User-Agent": "PrayReadBible/1.0" }
+  });
+  const raw = await response.json();
+  const verses = response.ok ? parsePlainChapter(raw) : [];
+  if (!verses.length) throw new Error("The Bible source did not answer.");
+  return verses;
+};
+
+/**
  * Parses the Strong's marked text. The Greek and Hebrew numbers arrive as
  * superscript codes and are kept in the verse text so the reader sees them
  * beside the word they belong to.
@@ -332,6 +370,30 @@ Deno.serve(async (req) => {
         }
       } catch {
         // Fall through to the plain KJV text below.
+      }
+    }
+
+    // A book that has one chapter is answered with a single verse by the
+    // bible-api.com source, so the whole chapter is taken from the source
+    // that carries the Strong's text, with the numbers taken away.
+    if (chaptersOfBook === 1) {
+      try {
+        const verses = await loadPlainChapter(bookNumber, chapter);
+        if (verses.length > 0) {
+          return Response.json({
+            reference: `${book} ${chapter}`,
+            book,
+            book_number: bookNumber,
+            chapter,
+            language: "en",
+            translation: translation === "kjvp" ? "kjv" : translation,
+            strongs: false,
+            verse_count: verses.length,
+            verses
+          });
+        }
+      } catch {
+        // Fall through to the other sources below.
       }
     }
 

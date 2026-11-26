@@ -5,11 +5,15 @@ import { PRAYERS } from "@/lib/seedContent";
 import { getBookPrayer } from "@/lib/bookPrayers";
 import { buildInlineNodes, parseReference } from "@/lib/scriptureRefs";
 import { selectionInside } from "@/lib/textSelection";
+import { fetchBookIntro } from "@/lib/bookIntro";
 import AnnotatedText from "@/components/read/AnnotatedText";
 
 /**
  * The prayer for the book. It can be marked like any other passage, and every
  * verse it leans on opens in the scripture popup without leaving the section.
+ *
+ * The closing prayer that was imported for the book stands in place of the
+ * prayer the app can build on its own.
  */
 export default function BookPrayerPanel({
   book,
@@ -19,7 +23,19 @@ export default function BookPrayerPanel({
   onOpenPassage
 }) {
   const [language, setLanguage] = useState("en");
-  const prayer = getBookPrayer(book);
+  const { data: imported } = useQuery({
+    queryKey: ["bookIntro", book.number],
+    queryFn: () => fetchBookIntro(book.number)
+  });
+  const importedPrayer =
+    imported && (imported.closing_prayer_en || imported.closing_prayer_lu)
+      ? {
+          title: imported.title_en || `Closing prayer for ${book.name}`,
+          body: imported.closing_prayer_en || "",
+          body_lu: imported.closing_prayer_lu || ""
+        }
+      : null;
+  const prayer = importedPrayer || getBookPrayer(book);
   const source = language === "lu" ? prayer.body_lu || prayer.body : prayer.body;
   const inline = useMemo(() => buildInlineNodes(source), [source]);
   const blockId = `prayer-${language}`;

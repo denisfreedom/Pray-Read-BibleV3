@@ -1,5 +1,6 @@
 import React from "react";
 import { parseReference } from "@/lib/scriptureRefs";
+import AnnotatedText from "@/components/read/AnnotatedText";
 import { HeartHandshakeIcon, RotateCcwIcon, Share2Icon } from "lucide-react";
 
 /**
@@ -14,6 +15,9 @@ export default function ChapterClosingPrayer({
   chapter,
   prayer,
   mode = "en",
+  annotations = [],
+  onAnnotate,
+  onRemove,
   onShare,
   onPrayAgain,
   onOpenPassage
@@ -24,6 +28,10 @@ export default function ChapterClosingPrayer({
   const luganda = prayer.bodyLu || "";
   const showEnglish = mode !== "lu" && !!english;
   const showLuganda = mode === "lu" ? !!luganda : mode === "both" && !!luganda;
+  const englishBlock = `closing-prayer-en-${book.number}-${chapter}`;
+  const lugandaBlock = `closing-prayer-lu-${book.number}-${chapter}`;
+  const forBlock = (blockId) =>
+    annotations.filter((annotation) => annotation.block_id === blockId);
 
   return (
     <section className="pr-card pr-closing-card" id="chapter-closing-prayer">
@@ -44,9 +52,39 @@ export default function ChapterClosingPrayer({
           {mode === "lu" && prayer.titleLu ? prayer.titleLu : prayer.title}
         </p>
 
-        {showEnglish ? <p className="pr-closing-text">{english}</p> : null}
-        {mode === "lu" && !english && luganda ? <p className="pr-closing-text">{luganda}</p> : null}
-        {showLuganda ? <p className="pr-closing-text is-lu">{luganda}</p> : null}
+        {showEnglish ? (
+          <AnnotatedText
+            blockId={englishBlock}
+            section="closing-prayer"
+            text={english}
+            annotations={forBlock(englishBlock)}
+            onAnnotate={onAnnotate}
+            onRemove={onRemove}
+            className="pr-closing-text"
+          />
+        ) : null}
+        {mode === "lu" && !english && luganda ? (
+          <AnnotatedText
+            blockId={lugandaBlock}
+            section="closing-prayer"
+            text={luganda}
+            annotations={forBlock(lugandaBlock)}
+            onAnnotate={onAnnotate}
+            onRemove={onRemove}
+            className="pr-closing-text"
+          />
+        ) : null}
+        {showLuganda ? (
+          <AnnotatedText
+            blockId={lugandaBlock}
+            section="closing-prayer"
+            text={luganda}
+            annotations={forBlock(lugandaBlock)}
+            onAnnotate={onAnnotate}
+            onRemove={onRemove}
+            className="pr-closing-text is-lu"
+          />
+        ) : null}
 
         {prayer.ref ? (
           <button
