@@ -1,175 +1,196 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
-import { useAuth } from "@/lib/AuthContext";
-import { VERSE_SONGS } from "@/lib/seedContent";
-import { WORSHIP_IMAGE } from "@/lib/theme";
+import { WORSHIP_PHOTO, PRAYREAD_LOGO_URL } from "@/lib/theme";
 import { usePlayer } from "@/lib/player";
-import { PlayIcon, PauseIcon, MusicIcon, AlertCircleIcon } from "lucide-react";
-import { fse2 } from "@/api/fse2Client";
+import {
+  booksInUse,
+  buildQueue,
+  buildSongIndex,
+  downloadSong,
+  filterSongs
+} from "@/lib/verseSongs";
+import SongCard from "@/components/song/SongCard";
+import SongFilters from "@/components/song/SongFilters";
+import SongShareSheet from "@/components/song/SongShareSheet";
+import { MusicIcon, AlertCircleIcon } from "lucide-react";
 
-
+/**
+ * The verse songs page.
+ *
+ * The songs are the point of the page, so they are shown as dark cards in a
+ * grid. The search and the filters work without reloading the page, and the
+ * series names are exactly the names the administrator typed.
+ */
 export default function VerseSongs() {
-  const { isAuthenticated } = useAuth();
-  const { playQueue, current, playing, toggle, error } = usePlayer();
+  const { playQueue, loadQueue, current, playing, toggle } = usePlayer();
+
+  const search = new URLSearchParams(window.location.search);
+  const seriesParam = search.get("series") || "";
+  const songParam = search.get("song") || "";
+
+  const [query, setQuery] = useState("");
+  const [seriesFilter, setSeriesFilter] = useState(seriesParam);
+  const [bookNumber, setBookNumber] = useState("");
+  const [notice, setNotice] = useState("");
+  const [sharing, setSharing] = useState(null);
+  const preparedRef = useRef("");
 
   const { data: seriesRows } = useQuery({
     queryKey: ["verseSongSeries"],
-    queryFn: () => fetchPublicCollection("series", { authenticated: isAuthenticated })
+    queryFn: () => fetchPublicCollection("series")
   });
 
   const { data: episodeRows } = useQuery({
     queryKey: ["verseSongEpisodes"],
-    queryFn: () => fetchPublicCollection("episodes", { authenticated: isAuthenticated })
+    queryFn: () => fetchPublicCollection("episodes")
   });
 
-  const series = useMemo(() => {
-    if (seriesRows && seriesRows.length) {
-      return seriesRows.map((row) => {
-        const episodes = (episodeRows || [])
-          .filter((episode) => episode.series_name === row.name)
-          .sort((a, b) => (a.episode_order || 0) - (b.episode_order || 0));
-        return { ...row, episodes };
-      });
-    }
-    return VERSE_SONGS;
-  }, [seriesRows, episodeRows]);
+  const { series, songs } = useMemo(
+    () => buildSongIndex(seriesRows || [], episodeRows || []),
+    [seriesRows, episodeRows]
+  );
 
-  const playSeries = (entry, index) => {
-    const tracks = entry.episodes.map((episode) => ({
-      title: episode.title,
-      series: entry.name,
-      verseRef: episode.verse_ref,
-      audioUrl: episode.audio_url,
-      duration: episode.duration_seconds || 0,
-      playlist: entry.episodes.map((item) => ({
-        title: item.title,
-        verseRef: item.verse_ref,
-        series: entry.name
-      }))
-    }));
-    if (current && current.series === entry.name && current.title === entry.episodes[index].title) {
+  // A link may carry the name of the series instead of its id, so both are
+  // accepted.
+  const seriesId = useMemo(() => {
+    if (!seriesFilter) return "";
+    const match = series.find(
+      (row) =>
+        row.id === seriesFilter ||
+        row.name.toLowerCase() === String(seriesFilter).toLowerCase()
+    );
+    return match ? match.id : seriesFilter;
+  }, [series, seriesFilter]);
+
+  const activeSeries = seriesId ? series.find((row) => row.id === seriesId) || null : null;
+
+  const visibleSongs = useMemo(
+    () => filterSongs(songs, { query, seriesId, bookNumber }),
+    [songs, query, seriesId, bookNumber]
+  );
+
+  const bookOptions = useMemo(() => booksInUse(songs), [songs]);
+
+  // A shared link opens the song without starting the music.
+  useEffect(() => {
+    if (!songParam || !songs.length) return;
+    if (preparedRef.current === songParam) return;
+    const index = songs.findIndex((row) => row.id === songParam);
+    if (index < 0) return;
+    preparedRef.current = songParam;
+    loadQueue(buildQueue(songs), index);
+  }, [songParam, songs, loadQueue]);
+
+  const handlePlay = (song) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setNotice("Verse songs need internet. The Bible, the devotionals and the commentary still work offline.");
+      return;
+    }
+    if (current && current.id === song.id) {
       toggle();
       return;
     }
-    playQueue(tracks, index);
+    const source = visibleSongs.some((row) => row.id === song.id) ? visibleSongs : songs;
+    const queue = buildQueue(source);
+    const index = queue.findIndex((track) => track.id === song.id);
+    if (index < 0) return;
+    setNotice("");
+    playQueue(queue, index);
+  };
+
+  const handleDownload = async (song) => {
+    if (!song.audioUrl) {
+      setNotice("This song has no audio file yet.");
+      return;
+    }
+    const saved = await downloadSong(song);
+    setNotice(saved ? `“${song.title}” was downloaded.` : "The download was opened in a new tab.");
   };
 
   return (
-    <div>
-      <section className="pr-hero">
-        <div className="pr-hero-bg" style={{ backgroundImage: `url(${WORSHIP_IMAGE})` }} />
-        <div className="pr-hero-overlay" />
-        <div className="pr-container pr-hero-inner">
-          <span className="pr-eyebrow pr-eyebrow-light">Verse-Songs</span>
-          <h1 className="pr-hero-title">Sing the scripture</h1>
-          <p className="pr-hero-text">
-            Songs built from the passages, with a player that keeps going while you read, pray or browse the
-            rest of the app.
-          </p>
+    <div className="pr-page">
+      <section className="pr-vs-hero">
+        <img className="pr-vs-hero-photo" src={WORSHIP_PHOTO} alt="" />
+        <div className="pr-vs-hero-overlay" />
+        <div className="pr-container pr-vs-hero-inner">
+          <img className="pr-vs-logo" src={PRAYREAD_LOGO_URL} alt="Pray-Read Bible" />
+          <h1 className="pr-vs-title">Verse Songs</h1>
+          <p className="pr-vs-subtitle">Sing the Word  -  verse by verse</p>
+          <Link to={createPageUrl("VerseSongSeries")} className="pr-vs-hero-link">
+            Browse the series →
+          </Link>
         </div>
       </section>
 
-      <div className="pr-container pr-section">
-        {error ? (
-          <div className="pr-error" style={{ marginBottom: 20, display: "flex", gap: 8, alignItems: "center" }}>
-            <AlertCircleIcon className="h-4 w-4" />
-            {error}
+      <div className="pr-container pr-vs-body">
+        <SongFilters
+          query={query}
+          onQuery={setQuery}
+          seriesOptions={series}
+          seriesId={seriesId}
+          onSeries={(value) => {
+            setSeriesFilter(value);
+            setBookNumber("");
+          }}
+          bookOptions={bookOptions}
+          bookNumber={bookNumber}
+          onBook={setBookNumber}
+          resultCount={visibleSongs.length}
+        />
+
+        {activeSeries ? (
+          <div className="pr-vs-series-bar">
+            <Link to={createPageUrl("VerseSongs")} className="pr-vs-back">
+              ← All Series
+            </Link>
+            <span className="pr-vs-series-name">{activeSeries.name}</span>
           </div>
         ) : null}
 
-        {series.length === 0 ? (
-          <div className="pr-empty">
-            <MusicIcon className="h-7 w-7" style={{ color: "var(--pr-gold-deep)" }} />
-            <p style={{ margin: "12px 0 0", fontWeight: 700 }}>No verse-song series yet.</p>
-            <p style={{ margin: "8px 0 0", fontSize: "0.88rem" }}>
-              The team is preparing the first recordings. Check back soon.
+        {notice ? (
+          <p className="pr-vs-notice">
+            <AlertCircleIcon className="h-4 w-4" style={{ display: "inline" }} /> {notice}
+          </p>
+        ) : null}
+
+        {visibleSongs.length === 0 ? (
+          <div className="pr-vs-empty">
+            <MusicIcon className="h-8 w-8" />
+            <h2>No songs here yet</h2>
+            <p>
+              The songs of a series appear here as soon as they are added in the admin panel.
             </p>
           </div>
         ) : (
-          <div className="pr-grid pr-grid-2">
-            {series.map((entry) => (
-              <div key={entry.name} className="pr-card" style={{ overflow: "hidden" }}>
-                <div
-                  style={{
-                    background: entry.accent || "var(--pr-emerald)",
-                    padding: "18px 22px",
-                    color: "#fff"
-                  }}
-                >
-                  <h2 className="pr-serif" style={{ margin: 0, fontSize: "1.35rem" }}>
-                    {entry.name}
-                  </h2>
-                  {entry.description ? (
-                    <p style={{ margin: "6px 0 0", fontSize: "0.85rem", color: "rgba(255,255,255,0.8)" }}>
-                      {entry.description}
-                    </p>
-                  ) : null}
-                  <p style={{ margin: "8px 0 0", fontSize: "0.75rem", color: "rgba(255,255,255,0.7)" }}>
-                    {entry.episodes.length} {entry.episodes.length === 1 ? "episode" : "episodes"}
-                  </p>
-                </div>
-
-                <ul className="pr-list-reset" style={{ padding: 8 }}>
-                  {entry.episodes.map((episode, index) => {
-                    const isCurrent = current && current.title === episode.title;
-                    return (
-                      <li
-                        key={`${entry.name}-${episode.title}`}
-                        style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 14px" }}
-                      >
-                        <button
-                          type="button"
-                          className="pr-icon-btn"
-                          style={{ background: isCurrent ? "var(--pr-gold-btn)" : "#fff", color: "var(--pr-emerald)" }}
-                          onClick={() => playSeries(entry, index)}
-                          aria-label={isCurrent && playing ? `Pause ${episode.title}` : `Play ${episode.title}`}
-                        >
-                          {isCurrent && playing ? (
-                            <PauseIcon className="h-4 w-4" />
-                          ) : (
-                            <PlayIcon className="h-4 w-4" />
-                          )}
-                        </button>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p className="pr-heading" style={{ margin: 0, fontWeight: 700, fontSize: "0.94rem" }}>
-                            {episode.title}
-                          </p>
-                          <p style={{ margin: "2px 0 0", fontSize: "0.78rem" }}>{episode.verse_ref}</p>
-                        </div>
-                        <span style={{ fontSize: "0.78rem", color: "var(--pr-body)" }}>
-                          {episode.duration_label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                <div style={{ padding: "0 22px 20px" }}>
-                  <Link
-                    to={createPageUrl("VerseSongSeries") + `?series=${encodeURIComponent(entry.name)}`}
-                    className="pr-link"
-                    style={{ fontSize: "0.86rem" }}
-                  >
-                    Open series →
-                  </Link>
-                </div>
-              </div>
+          <div className="pr-vs-grid">
+            {visibleSongs.map((song) => (
+              <SongCard
+                key={song.id}
+                song={song}
+                isCurrent={!!current && current.id === song.id}
+                isPlaying={playing}
+                onPlay={() => handlePlay(song)}
+                onDownload={() => handleDownload(song)}
+                onShare={() => setSharing(song)}
+              />
             ))}
           </div>
         )}
 
-        <div className="pr-success" style={{ marginTop: 22 }}>
-          Verse-songs stream from the internet. The Bible, devotionals, prayers and commentary work offline once
-          downloaded in the{" "}
+        <p className="pr-vs-footnote">
+          Verse songs stream from the internet. The Bible, the devotionals, the prayers and the commentary
+          work offline once they are downloaded in the{" "}
           <Link to={createPageUrl("Offline")} className="pr-link">
             offline centre
           </Link>
           .
-        </div>
+        </p>
       </div>
+
+      <SongShareSheet song={sharing} onClose={() => setSharing(null)} />
     </div>
   );
 }

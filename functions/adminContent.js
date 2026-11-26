@@ -76,6 +76,13 @@ const asNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/** Reads a yes or no answer, whatever way it was written. */
+const asBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  const text = asText(value).toLowerCase();
+  return text === "true" || text === "1" || text === "yes" || text === "on";
+};
+
 /** Turns a list of references into the one line the app stores. */
 const normaliseRefs = (value) => {
   if (Array.isArray(value)) {
@@ -288,6 +295,58 @@ const IMPORT_PLANS = {
       source: ["source"]
     },
     normalise: { book_number: asNumber }
+  },
+  VerseSongSeries: {
+    entity: "VerseSongSeries",
+    key: (row) => `series:${asText(row.name).toLowerCase()}`,
+    required: ["name"],
+    aliases: {
+      name: ["name", "series_name", "series"],
+      description: ["description"],
+      cover_image: ["cover_image", "coverImage", "cover", "cover_url"],
+      thumbnail: ["thumbnail", "thumb_url"],
+      accent: ["accent", "accent_colour", "accent_color"],
+      active: ["active"]
+    },
+    normalise: { active: asBoolean }
+  },
+  VerseSongEpisode: {
+    entity: "VerseSongEpisode",
+    key: (row) =>
+      `song:${asText(row.series_name).toLowerCase()}:${asText(row.title).toLowerCase()}:${asNumber(
+        row.chapter
+      )}:${asText(row.verse).toLowerCase()}`,
+    required: ["title", "series_name", "audio_url"],
+    aliases: {
+      title: ["title", "song_title"],
+      series_name: ["series_name", "series"],
+      book_name: ["book_name", "bookName", "book"],
+      book_number: ["book_number", "bookNumber"],
+      chapter: ["chapter"],
+      verse: ["verse", "verse_number", "verseNumber"],
+      verse_ref: ["verse_ref", "verseRef"],
+      language: ["language", "lang"],
+      version: ["version"],
+      duration_label: ["duration_label", "durationLabel"],
+      duration_seconds: ["duration_seconds", "durationSeconds"],
+      audio_url: ["audio_url", "audioUrl", "audio"],
+      audio_key: ["audio_key", "audioKey"],
+      cover_url: ["cover_url", "coverUrl", "cover", "cover_image"],
+      thumbnail: ["thumbnail"],
+      lyrics_en: ["lyrics_en", "lyricsEn", "lyrics"],
+      lyrics_lu: ["lyrics_lu", "lyricsLu"],
+      episode_order: ["episode_order", "episodeOrder", "order", "order_index", "track"],
+      plays_count: ["plays_count", "playsCount", "plays"],
+      active: ["active"]
+    },
+    normalise: {
+      book_number: asNumber,
+      chapter: asNumber,
+      duration_seconds: asNumber,
+      episode_order: asNumber,
+      plays_count: asNumber,
+      active: asBoolean
+    }
   }
 };
 

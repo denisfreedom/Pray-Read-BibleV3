@@ -64,6 +64,9 @@
 .h-7 {
     height: 1.75rem
 }
+.h-8 {
+    height: 2rem
+}
 .w-12 {
     width: 3rem
 }
@@ -81,6 +84,9 @@
 }
 .w-7 {
     width: 1.75rem
+}
+.w-8 {
+    width: 2rem
 }
 .w-full {
     width: 100%
@@ -215,6 +221,10 @@
 }
 .blur {
     --tw-blur: blur(8px);
+    filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)
+}
+.drop-shadow {
+    --tw-drop-shadow: drop-shadow(0 1px 2px rgb(0 0 0 / 0.1)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.06));
     filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)
 }
 .filter {

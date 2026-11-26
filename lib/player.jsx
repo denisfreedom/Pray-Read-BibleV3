@@ -13,6 +13,7 @@ const DEFAULT_STATE = {
   shuffle: false,
   repeat: "off",
   expanded: false,
+  minimized: false,
   error: "",
   ready: false
 };
@@ -115,6 +116,18 @@ export function PlayerProvider({ children }) {
     [loadTrack]
   );
 
+  // Loads a list of songs and holds on the first one, without starting the
+  // music. It is used when a reader opens a shared song link.
+  const loadQueue = useCallback(
+    (tracks, startIndex = 0) => {
+      if (!tracks || !tracks.length) return;
+      queueRef.current = tracks;
+      setState((prev) => ({ ...prev, queue: tracks, index: startIndex, error: "", playing: false }));
+      loadTrack(startIndex, false);
+    },
+    [loadTrack]
+  );
+
   const toggle = useCallback(() => {
     const audio = audioRef.current;
     if (!audio || state.index < 0) return;
@@ -172,7 +185,7 @@ export function PlayerProvider({ children }) {
   }, []);
 
   const playIndex = useCallback((index) => {
-    setState((prev) => ({ ...prev, index }));
+    setState((prev) => ({ ...prev, index, playing: true }));
   }, []);
 
   const toggleShuffle = useCallback(() => setState((prev) => ({ ...prev, shuffle: !prev.shuffle })), []);
@@ -181,7 +194,31 @@ export function PlayerProvider({ children }) {
     []
   );
   const setExpanded = useCallback((expanded) => setState((prev) => ({ ...prev, expanded })), []);
+  const setMinimized = useCallback((minimized) => setState((prev) => ({ ...prev, minimized })), []);
   const clearError = useCallback(() => setState((prev) => ({ ...prev, error: "" })), []);
+
+  // Stops the song and clears the player, so the bar leaves the screen.
+  const close = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    queueRef.current = [];
+    setState((prev) => ({
+      ...prev,
+      queue: [],
+      index: -1,
+      playing: false,
+      currentTime: 0,
+      duration: 0,
+      expanded: false,
+      minimized: false,
+      error: "",
+      ready: false
+    }));
+  }, []);
 
   const current = state.index >= 0 ? state.queue[state.index] || null : null;
 
@@ -190,6 +227,7 @@ export function PlayerProvider({ children }) {
       ...state,
       current,
       playQueue,
+      loadQueue,
       playIndex,
       toggle,
       seek,
@@ -201,12 +239,15 @@ export function PlayerProvider({ children }) {
       toggleShuffle,
       cycleRepeat,
       setExpanded,
+      setMinimized,
+      close,
       clearError
     }),
     [
       state,
       current,
       playQueue,
+      loadQueue,
       playIndex,
       toggle,
       seek,
@@ -218,6 +259,8 @@ export function PlayerProvider({ children }) {
       toggleShuffle,
       cycleRepeat,
       setExpanded,
+      setMinimized,
+      close,
       clearError
     ]
   );

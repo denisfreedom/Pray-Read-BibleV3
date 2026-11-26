@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   PlayIcon,
   PauseIcon,
@@ -11,13 +11,18 @@ import {
   Volume2Icon,
   GaugeIcon,
   ListMusicIcon,
-  RotateCcwIcon,
-  RotateCwIcon,
-  XCircleIcon
+  XIcon
 } from "lucide-react";
 import { usePlayer } from "@/lib/player";
 import { formatDuration } from "@/lib/format";
 
+/**
+ * The verse-song player.
+ *
+ * It lives at the foot of every page, so a song keeps playing while the
+ * reader moves to the Bible, the home page or the dashboard. The bar is
+ * black, like the song cards, with cream and gold lettering.
+ */
 export default function GlobalPlayer() {
   const {
     current,
@@ -29,10 +34,10 @@ export default function GlobalPlayer() {
     shuffle,
     repeat,
     expanded,
+    minimized,
     error,
     toggle,
     seek,
-    skip,
     setVolume,
     setSpeed,
     next,
@@ -40,236 +45,177 @@ export default function GlobalPlayer() {
     toggleShuffle,
     cycleRepeat,
     setExpanded,
+    setMinimized,
+    close,
     clearError,
     playIndex
   } = usePlayer();
 
+  // The page keeps clear of the player while a song is on.
+  useEffect(() => {
+    if (!current) return undefined;
+    document.body.classList.add("pr-has-player");
+    return () => document.body.classList.remove("pr-has-player");
+  }, [current]);
+
   if (!current) return null;
 
-  const percent = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const playlist = Array.isArray(current.playlist) ? current.playlist : [];
+  const currentIndex = playlist.findIndex((track) => track && track.id === current.id);
 
-  const onSeek = (event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = (event.clientX - rect.left) / rect.width;
+  const handleSeek = (event) => {
+    const bar = event.currentTarget;
+    const box = bar.getBoundingClientRect();
+    if (!box.width || !duration) return;
+    const ratio = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
     seek(ratio * duration);
   };
 
   return (
-    <div className="pr-player">
-      {expanded ? (
+    <div className={`pr-player${minimized ? " pr-player-min" : ""}`}>
+      {expanded && !minimized ? (
         <div className="pr-player-sheet">
-          <div className="pr-container">
-            <div className="pr-grid pr-grid-2" style={{ alignItems: "start" }}>
-              <div>
-                <p className="pr-eyebrow pr-eyebrow-light">Now playing</p>
-                <h3 className="pr-serif" style={{ color: "#fff", margin: "10px 0 6px", fontSize: "1.5rem" }}>
-                  {current.title}
-                </h3>
-                <p style={{ margin: 0, color: "rgba(255,255,255,0.65)", fontSize: "0.85rem" }}>
-                  {current.series} {current.verseRef ? `· ${current.verseRef}` : ""}
-                </p>
-
-                <div
-                  className="pr-progress"
-                  onClick={onSeek}
-                  role="slider"
-                  aria-label="Seek"
-                  aria-valuenow={Math.round(percent)}
-                  tabIndex={0}
-                >
-                  <span className="pr-progress-fill" style={{ width: `${percent}%` }} />
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: "0.72rem",
-                    color: "rgba(255,255,255,0.6)",
-                    marginTop: 6
-                  }}
-                >
-                  <span>{formatDuration(currentTime)}</span>
-                  <span>{formatDuration(duration)}</span>
-                </div>
-
-                <div className="pr-player-controls" style={{ marginTop: 18, flexWrap: "wrap" }}>
-                  <button type="button" className="pr-player-btn" onClick={previous} aria-label="Previous">
-                    <SkipBackIcon className="h-4 w-4" />
-                  </button>
-                  <button type="button" className="pr-player-btn" onClick={() => skip(-15)} aria-label="Back 15 seconds">
-                    <RotateCcwIcon className="h-4 w-4" />
-                  </button>
-                  <button type="button" className="pr-player-btn pr-player-btn-main" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
-                    {playing ? <PauseIcon className="h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
-                  </button>
-                  <button type="button" className="pr-player-btn" onClick={() => skip(15)} aria-label="Forward 15 seconds">
-                    <RotateCwIcon className="h-4 w-4" />
-                  </button>
-                  <button type="button" className="pr-player-btn" onClick={next} aria-label="Next">
-                    <SkipForwardIcon className="h-4 w-4" />
-                  </button>
+          <p className="pr-player-sheet-title">Playlist</p>
+          {playlist.length === 0 ? (
+            <p className="pr-player-sheet-empty">This list has no songs yet.</p>
+          ) : (
+            <ul className="pr-player-list">
+              {playlist.map((track, index) => (
+                <li key={track.id || `${track.title}-${index}`}>
                   <button
                     type="button"
-                    className="pr-player-btn"
-                    onClick={toggleShuffle}
-                    aria-label="Shuffle"
-                    style={shuffle ? { background: "#e7c873", color: "#1a352c" } : undefined}
+                    className={`pr-player-list-row${index === currentIndex ? " pr-player-list-row-active" : ""}`}
+                    onClick={() => playIndex(index)}
                   >
-                    <ShuffleIcon className="h-4 w-4" />
+                    {track.cover ? (
+                      <img className="pr-player-list-cover" src={track.cover} alt="" />
+                    ) : null}
+                    <span className="pr-player-list-text">
+                      <span className="pr-player-list-title">{track.title}</span>
+                      <span className="pr-player-list-sub">
+                        {[track.series, track.verseRef].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    className="pr-player-btn"
-                    onClick={cycleRepeat}
-                    aria-label={`Repeat ${repeat}`}
-                    style={repeat !== "off" ? { background: "#e7c873", color: "#1a352c" } : undefined}
-                  >
-                    <RepeatIcon className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.78rem" }}>
-                    <Volume2Icon className="h-4 w-4" />
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={volume}
-                      onChange={(event) => setVolume(event.target.value)}
-                      aria-label="Volume"
-                      style={{ width: 110 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.78rem" }}>
-                    <GaugeIcon className="h-4 w-4" />
-                    <select
-                      value={speed}
-                      onChange={(event) => setSpeed(event.target.value)}
-                      aria-label="Playback speed"
-                      style={{
-                        background: "rgba(255,255,255,0.1)",
-                        color: "#fff",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        borderRadius: 8,
-                        padding: "6px 10px"
-                      }}
-                    >
-                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                        <option key={rate} value={rate} style={{ color: "#1a352c" }}>
-                          {rate}x
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                {error ? (
-                  <div className="pr-player-error" style={{ marginTop: 16 }}>
-                    {error}
-                  </div>
-                ) : null}
-              </div>
-
-              <div>
-                <p className="pr-eyebrow pr-eyebrow-light">Playlist</p>
-                <ul className="pr-list-reset" style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                  {(current.playlist || []).map((track, index) => (
-                    <li key={`${track.title}-${index}`}>
-                      <button
-                        type="button"
-                        onClick={() => playIndex(index)}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          background: "transparent",
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          borderRadius: 12,
-                          color: "#fff",
-                          padding: "10px 14px",
-                          cursor: "pointer",
-                          fontSize: "0.84rem"
-                        }}
-                      >
-                        <span style={{ fontWeight: 700 }}>{track.title}</span>
-                        <span style={{ display: "block", color: "rgba(255,255,255,0.55)", fontSize: "0.72rem" }}>
-                          {track.verseRef || track.series}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : null}
 
       <div className="pr-player-inner">
-        <button
-          type="button"
-          className="pr-player-btn pr-player-btn-main"
-          onClick={toggle}
-          aria-label={playing ? "Pause" : "Play"}
-        >
-          {playing ? <PauseIcon className="h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
-        </button>
+        {current.cover ? <img className="pr-player-cover" src={current.cover} alt="" /> : null}
 
         <div className="pr-player-track">
           <p className="pr-player-title">{current.title}</p>
           <p className="pr-player-sub">
-            {current.series}
-            {current.verseRef ? ` · ${current.verseRef}` : ""} · {formatDuration(currentTime)} /{" "}
-            {formatDuration(duration)}
+            {[current.series, current.verseRef].filter(Boolean).join(" · ")}
           </p>
-          <div className="pr-progress" onClick={onSeek} role="slider" aria-label="Seek" tabIndex={0}>
-            <span className="pr-progress-fill" style={{ width: `${percent}%` }} />
-          </div>
+
+          {minimized ? null : (
+            <>
+              <div className="pr-progress" onClick={handleSeek} role="presentation">
+                <div className="pr-progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="pr-player-time">
+                <span>{formatDuration(currentTime) || "0:00"}</span>
+                <span>{formatDuration(duration) || "0:00"}</span>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="pr-player-controls">
-          <button type="button" className="pr-player-btn" onClick={next} aria-label="Next track">
+          <button type="button" className="pr-player-btn" onClick={previous} aria-label="Previous song">
+            <SkipBackIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="pr-player-btn pr-player-btn-main"
+            onClick={toggle}
+            aria-label={playing ? "Pause" : "Play"}
+          >
+            {playing ? <PauseIcon className="h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
+          </button>
+          <button type="button" className="pr-player-btn" onClick={next} aria-label="Next song">
             <SkipForwardIcon className="h-4 w-4" />
+          </button>
+
+          {minimized ? null : (
+            <>
+              <button
+                type="button"
+                className="pr-player-btn"
+                onClick={toggleShuffle}
+                aria-label="Shuffle"
+                style={shuffle ? { background: "var(--pr-gold-btn)", color: "#1a352c" } : undefined}
+              >
+                <ShuffleIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="pr-player-btn"
+                onClick={cycleRepeat}
+                aria-label="Repeat"
+                style={repeat !== "off" ? { background: "var(--pr-gold-btn)", color: "#1a352c" } : undefined}
+              >
+                <RepeatIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="pr-player-btn"
+                onClick={() => setSpeed(speed === 1 ? 1.25 : speed === 1.25 ? 1.5 : 1)}
+                aria-label="Playback speed"
+              >
+                <GaugeIcon className="h-4 w-4" />
+                <span className="pr-player-speed">{speed}x</span>
+              </button>
+              <span className="pr-player-volume">
+                <Volume2Icon className="h-4 w-4" />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={volume}
+                  onChange={(event) => setVolume(event.target.value)}
+                  aria-label="Volume"
+                />
+              </span>
+            </>
+          )}
+
+          <button
+            type="button"
+            className="pr-player-btn"
+            onClick={() => setMinimized(!minimized)}
+            aria-label={minimized ? "Open the player" : "Minimise the player"}
+          >
+            {minimized ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
           </button>
           <button
             type="button"
             className="pr-player-btn"
             onClick={() => setExpanded(!expanded)}
-            aria-label={expanded ? "Minimise player" : "Expand player"}
+            aria-label="Show the playlist"
+            style={expanded ? { background: "var(--pr-gold-btn)", color: "#1a352c" } : undefined}
           >
-            {expanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronUpIcon className="h-4 w-4" />}
-          </button>
-          <button type="button" className="pr-player-btn" onClick={() => setExpanded(true)} aria-label="Open playlist">
             <ListMusicIcon className="h-4 w-4" />
+          </button>
+          <button type="button" className="pr-player-btn" onClick={close} aria-label="Stop the song">
+            <XIcon className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       {error ? (
-        <div className="pr-container" style={{ paddingBottom: 12 }}>
-          <div className="pr-player-error" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <XCircleIcon className="h-4 w-4" />
-            <span style={{ flex: 1 }}>{error}</span>
-            <button
-              type="button"
-              onClick={() => {
-                clearError();
-                toggle();
-              }}
-              style={{
-                background: "transparent",
-                border: "1px solid rgba(255,255,255,0.5)",
-                color: "#fff",
-                borderRadius: 999,
-                padding: "4px 12px",
-                fontSize: "0.75rem",
-                cursor: "pointer"
-              }}
-            >
-              Try again
-            </button>
-          </div>
+        <div className="pr-player-error">
+          <span>{error}</span>
+          <button type="button" onClick={clearError}>
+            Try again
+          </button>
         </div>
       ) : null}
     </div>

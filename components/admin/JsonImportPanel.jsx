@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { callAdminData } from "@/lib/adminSession";
 import { bookFileCollections, isBookFile } from "@/lib/bookImport";
-import { PRAYER_FILE_FORMAT, prayerCrossRefCollections } from "@/lib/prayerImport";
+import { BACKFILL_FILE_FORMAT, PRAYER_FILE_FORMAT, prayerCrossRefCollections, validatePrayerFile } from "@/lib/prayerImport";
 import {
   UploadIcon,
   DownloadIcon,
@@ -101,13 +101,13 @@ export const normalisePayload = (parsed) => {
 const preparePayload = (parsed) => {
   // A file in the prayer-crossrefs format: its prayers become the prayer
   // passages and its cross-references become the cross-references.
-  if (parsed && parsed.format === PRAYER_FILE_FORMAT) {
+  if (parsed && (parsed.format === PRAYER_FILE_FORMAT || parsed.format === BACKFILL_FILE_FORMAT)) {
+    const validation = validatePrayerFile(parsed);
+    if (!validation.ok) return { error: `The prayer and cross-reference file is blocked: ${validation.errors.slice(0, 12).join(" ")}` };
     const prepared = prayerCrossRefCollections(parsed);
     if (!prepared.ok) {
       const first = prepared.errors.slice(0, 3).map((item) => item.message).join(" ");
-      return {
-        error: `The file was read, but ${prepared.errors.length} row(s) must be fixed first. ${first}`
-      };
+      return { error: `The file was read, but ${prepared.errors.length} row(s) must be fixed first. ${first}` };
     }
     return {
       collections: prepared.collections,
