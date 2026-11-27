@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BIBLE_BOOKS } from "@/lib/bibleBooks";
-import { TEMPLATE_URL, bookNameFor, importShapeOf, missingCrossRefsTemplateText, prepareImport, prayerTemplateText, readImportedContent } from "@/lib/prayerImport";
+import { TEMPLATE_URL, bookNameFor, importShapeOf, missingCrossRefsTemplateText, prepareImport, prayerTemplateText, readImportedContent, parsePrayerImportText } from "@/lib/prayerImport";
 import { callAdminData } from "@/lib/adminSession";
 import { AlertTriangleIcon, CheckCircleIcon, DownloadIcon, Link2Icon, Loader2Icon, ListIcon, UploadIcon } from "lucide-react";
 
@@ -30,7 +30,8 @@ export default function PrayerCrossRefImport() {
   const onFile = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!/\.json$/i.test(file.name)) { setParseError("Only a .json file can be read."); return; }
+    if (file.size > 10 * 1024 * 1024) { setParseError(`File is ${(file.size / 1024 / 1024).toFixed(1)} MB; the limit is 10 MB.`); return; }
+    if (!/\.(json|txt|jsonl)$/i.test(file.name)) { setParseError("Choose a .json, .txt, or .jsonl file."); return; }
     const reader = new FileReader();
     reader.onload = () => { setFileName(file.name); setRaw(String(reader.result || "")); setChecked(null); setReport(null); setParseError(""); };
     reader.onerror = () => setParseError("The file could not be read.");
@@ -46,8 +47,8 @@ export default function PrayerCrossRefImport() {
   const check = () => {
     setReport(null); setParseError("");
     let parsed;
-    try { parsed = JSON.parse(raw); } catch (error) { setParseError(`The file is not valid JSON: ${error.message}`); setChecked(null); return; }
-      const result = prepareImport(parsed);
+    try { parsed = parsePrayerImportText(raw); } catch (error) { setParseError(`The file is not valid JSON: ${error.message}`); setChecked(null); return; }
+    const result = prepareImport(parsed);
     setChecked(result);
     if (result.rows?.bookNumber) setBookNumber(result.rows.bookNumber);
     const first = result.rows?.prayers?.[0]?.chapter || result.rows?.chapterIntros?.[0]?.chapter;
@@ -57,7 +58,7 @@ export default function PrayerCrossRefImport() {
     if (!checked?.ok) return;
     setBusy(true); setReport(null);
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = parsePrayerImportText(raw);
       if (!importShapeOf(parsed)) throw new Error("This file format is not supported by this import.");
       const prepared = prepareImport(parsed);
       if (!prepared.ok) throw new Error(prepared.errors.join("\n"));

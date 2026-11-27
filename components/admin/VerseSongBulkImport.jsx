@@ -1,280 +1,56 @@
 import React, { useMemo, useRef, useState } from "react";
 import { callAdminData } from "@/lib/adminSession";
-import { BIBLE_BOOKS } from "@/lib/bibleBooks";
 import { UploadIcon, DownloadIcon, Loader2Icon, CheckIcon, XIcon } from "lucide-react";
 
-const TEMPLATE = {
-  format: "pray-read-verse-songs-v1",
-  songs: [
-    {
-      title: "Genesis 1:1  -  In the Beginning",
-      series: "Genesis Songs",
-      book: "Genesis",
-      book_number: 1,
-      chapter: 1,
-      verse: "1",
-      language: "EN",
-      version: "KJV",
-      audio_url: "https://…/genesis-1-1.mp3",
-      cover_url: "https://…/cover.jpg",
-      lyrics_en: "",
-      lyrics_lu: "",
-      order: 1,
-      active: true
-    }
-  ]
-};
-
-const asText = (value) => (value === null || value === undefined ? "" : String(value).trim());
-
-/**
- * The bulk upload of the verse songs.
- *
- * The file is checked before anything is written: a song without a title, a
- * series or an audio file is reported with its number in the file, and the
- * import button stays closed while there is an error.
- */
-export default function VerseSongBulkImport({ seriesNames, onImported }) {
-  const [rows, setRows] = useState([]);
-  const [fileName, setFileName] = useState("");
-  const [parseError, setParseError] = useState("");
-  const [createSeries, setCreateSeries] = useState(true);
-  const [importing, setImporting] = useState(false);
-  const [report, setReport] = useState(null);
-  const [progress, setProgress] = useState(0);
-  const fileRef = useRef(null);
-
-  const knownSeries = useMemo(() => new Set(seriesNames.map((name) => String(name).toLowerCase())), [seriesNames]);
-
-  const checked = useMemo(
-    () =>
-      rows.map((row, index) => {
-        const errors = [];
-        const title = asText(row.title);
-        const series = asText(row.series || row.series_name);
-        const audio = asText(row.audio_url);
-        const bookName = asText(row.book || row.book_name);
-        const bookNumber = Number(row.book_number);
-        const chapter = Number(row.chapter);
-        const book = BIBLE_BOOKS.find((item) => item.number === bookNumber || item.name.toLowerCase() === bookName.toLowerCase());
-
-        if (!title) errors.push("the title is missing");
-        if (!series) errors.push("the series is missing");
-        if (!audio) errors.push("the audio file is missing");
-        if (!book) errors.push("the book must be one of the 66 books");
-        else if (!chapter || chapter < 1 || chapter > book.chapters)
-          errors.push(`the chapter must be between 1 and ${book.chapters}`);
-        if (series && !knownSeries.has(series.toLowerCase()) && !createSeries)
-          errors.push("the series does not exist yet");
-
-        return {
-          index: index + 1,
-          title,
-          series,
-          bookChV: book ? `${book.name} ${chapter || "?"}${row.verse ? `:${asText(row.verse)}` : ""}` : " - ",
-          language: asText(row.language) || "EN",
-          audio: audio ? "Ready" : "Missing",
-          ok: errors.length === 0,
-          errors,
-          raw: row
-        };
-      }),
-    [rows, knownSeries, createSeries]
-  );
-
-  const errorCount = checked.filter((row) => !row.ok).length;
-
-  const handleFile = async (file) => {
-    if (!file) return;
-    setParseError("");
-    setReport(null);
-    setFileName(file.name);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const list = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed.songs)
-        ? parsed.songs
-        : Array.isArray(parsed.VerseSongEpisode)
-        ? parsed.VerseSongEpisode
-        : null;
-      if (!list) {
-        setRows([]);
-        setParseError("The file has no songs. Use the template to see the shape of the file.");
-        return;
-      }
-      setRows(list);
-    } catch (err) {
-      setRows([]);
-      setParseError(err.message || "The file could not be read as JSON.");
-    }
-  };
-
-  const downloadTemplate = () => {
-    const blob = new Blob([JSON.stringify(TEMPLATE, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "verse-songs-template.json";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  };
-
+const TEMPLATE = { format: "pray-read-verse-songs-v1", series: { series_title: "philemon", display_order: 0, description: "", thumbnail_url: "", featured: false }, songs: [{ song_title: "In the Beginning", description: "", mp3_url: "https://example.com/song.mp3", thumbnail_url: "", published: true }] };
+const asText = (value) => value === null || value === undefined ? "" : String(value).trim();
+const validMp3 = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) && /\.(mp3|m4a|wav)$/i.test(url.pathname); } catch { return false; } };
+const supplied = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+export default function VerseSongBulkImport({ onImported }) {
+  const inputRef = useRef(null); const [fileName, setFileName] = useState(""); const [raw, setRaw] = useState(""); const [busy, setBusy] = useState(false); const [report, setReport] = useState(null); const [error, setError] = useState("");
+  const parsed = useMemo(() => { if (!raw) return null; try { return JSON.parse(raw); } catch { return null; } }, [raw]);
+  const songs = Array.isArray(parsed?.songs) ? parsed.songs : [];
+  const errors = [];
+  if (raw && !parsed) errors.push("The file is not valid JSON.");
+  if (parsed && parsed.format !== "pray-read-verse-songs-v1") errors.push("Use the pray-read-verse-songs-v1 format.");
+  if (parsed && !asText(parsed.series?.series_title)) errors.push("Series Title is required.");
+  if (parsed && !Array.isArray(parsed.songs)) errors.push("Songs must be an array.");
+  songs.forEach((song, index) => { if (!asText(song.song_title)) errors.push(`Song ${index + 1}: Song Title is required.`); if (!validMp3(asText(song.mp3_url))) errors.push(`Song ${index + 1}: Enter a valid MP3 URL.`); });
+  const downloadTemplate = () => { const url = URL.createObjectURL(new Blob([JSON.stringify(TEMPLATE, null, 2)], { type: "application/json" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "verse-songs-template.json"; anchor.click(); URL.revokeObjectURL(url); };
+  const readFile = async (file) => { setError(""); setReport(null); setFileName(file?.name || ""); setRaw(file ? await file.text() : ""); };
   const runImport = async () => {
-    if (!checked.length || errorCount) return;
-    setImporting(true);
-    setReport(null);
-    setProgress(0);
+    if (errors.length || !parsed) return; setBusy(true); setError(""); setReport(null);
     try {
-      const payload = { VerseSongEpisode: checked.map((row) => row.raw) };
-      const result = await callAdminData("bulkImportJson", { payload });
-      const summary = (result && result.summary && result.summary.VerseSongEpisode) || {};
-      setReport({
-        inserted: summary.inserted || 0,
-        updated: summary.updated || 0,
-        skipped: summary.skipped || 0,
-        errors: (result && result.errors) || []
-      });
-      setProgress(100);
-      if (onImported) onImported();
-    } catch (err) {
-      setReport({ inserted: 0, updated: 0, skipped: 0, errors: [err.message || "The import failed."] });
-    } finally {
-      setImporting(false);
-    }
+      const title = parsed.series.series_title; const allSeries = (await callAdminData("list", { entity: "VerseSongSeries", limit: 5000 })).rows || [];
+      const existingSeries = allSeries.find((row) => row.name === title);
+      const seriesValues = { name: title };
+      if (supplied(parsed.series, "display_order")) seriesValues.display_order = Number(parsed.series.display_order) || 0;
+      if (supplied(parsed.series, "description")) seriesValues.description = parsed.series.description ?? "";
+      if (supplied(parsed.series, "thumbnail_url")) { seriesValues.thumbnail = parsed.series.thumbnail_url ?? ""; seriesValues.cover_image = parsed.series.thumbnail_url ?? ""; }
+      if (supplied(parsed.series, "featured")) seriesValues.featured = Boolean(parsed.series.featured);
+      let seriesId = existingSeries?.id;
+      if (existingSeries) await callAdminData("update", { entity: "VerseSongSeries", id: existingSeries.id, values: seriesValues });
+      else { const result = await callAdminData("create", { entity: "VerseSongSeries", values: seriesValues }); seriesId = result?.row?.id || result?.id; }
+      const allSongs = (await callAdminData("list", { entity: "VerseSongEpisode", limit: 10000 })).rows || [];
+      const matches = new Map(allSongs.filter((row) => asText(row.series_name).toLowerCase() === title.toLowerCase()).map((row) => [asText(row.title).toLowerCase(), row]));
+      let inserted = 0; let updated = 0;
+      for (const item of songs) {
+        const values = { title: item.song_title, series_name: title, audio_url: item.mp3_url };
+        if (supplied(item, "description")) values.description = item.description ?? "";
+        if (supplied(item, "duration_seconds")) values.duration_seconds = Number(item.duration_seconds) || 0;
+        if (supplied(item, "thumbnail_url")) { values.thumbnail = item.thumbnail_url ?? ""; values.cover_url = item.thumbnail_url ?? ""; }
+        if (supplied(item, "published")) values.active = item.published !== false;
+        const prior = matches.get(asText(item.song_title).toLowerCase());
+        if (prior) { await callAdminData("update", { entity: "VerseSongEpisode", id: prior.id, values }); updated += 1; }
+        else { await callAdminData("create", { entity: "VerseSongEpisode", values }); inserted += 1; }
+      }
+      setReport({ seriesId, inserted, updated, skipped: 0 }); await onImported?.();
+    } catch (err) { setError(err.message || "The file could not be imported."); } finally { setBusy(false); }
   };
-
-  return (
-    <div className="pr-card pr-card-pad">
-      <h2 className="pr-heading" style={{ margin: "0 0 6px", fontSize: "1.05rem" }}>
-        Bulk upload the songs with a JSON file
-      </h2>
-      <p className="pr-muted" style={{ margin: "0 0 16px", fontSize: "0.85rem" }}>
-        Upload a file of songs. Every song is checked first, and a song that is already in the app is
-        updated instead of being added twice.
-      </p>
-
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <button type="button" className="pr-btn pr-btn-outline pr-btn-sm" onClick={downloadTemplate}>
-          <DownloadIcon className="h-4 w-4" style={{ display: "inline" }} /> Download JSON Template
-        </button>
-        <label className="pr-btn pr-btn-primary pr-btn-sm" style={{ cursor: "pointer" }}>
-          <UploadIcon className="h-4 w-4" style={{ display: "inline" }} /> Bulk Upload via JSON
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: "none" }}
-            onChange={(event) => handleFile(event.target.files && event.target.files[0])}
-          />
-        </label>
-        {fileName ? (
-          <span className="pr-muted" style={{ alignSelf: "center", fontSize: "0.82rem" }}>{fileName}</span>
-        ) : null}
-      </div>
-
-      <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.86rem", marginBottom: 14 }}>
-        <input
-          type="checkbox"
-          checked={createSeries}
-          onChange={(event) => setCreateSeries(event.target.checked)}
-        />
-        Create missing series automatically
-      </label>
-
-      {parseError ? <div className="pr-error" style={{ marginBottom: 14 }}>{parseError}</div> : null}
-
-      {checked.length ? (
-        <>
-          <p style={{ margin: "0 0 10px", fontSize: "0.88rem", fontWeight: 700 }}>
-            {checked.length} {checked.length === 1 ? "song" : "songs"}, {errorCount}{" "}
-            {errorCount === 1 ? "error" : "errors"}
-          </p>
-
-          <div className="pr-scroll-x">
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.83rem" }}>
-              <thead>
-                <tr style={{ textAlign: "start", borderBottom: "1px solid var(--pr-border)" }}>
-                  {["Title", "Series", "Book Ch:V", "Language", "Audio", "Status"].map((label) => (
-                    <th key={label} style={{ padding: "8px 10px", color: "var(--pr-gold-deep)", fontWeight: 800 }}>
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {checked.slice(0, 20).map((row) => (
-                  <tr key={row.index} style={{ borderBottom: "1px solid var(--pr-border)" }}>
-                    <td style={{ padding: "8px 10px" }}>{row.title || " - "}</td>
-                    <td style={{ padding: "8px 10px" }}>{row.series || " - "}</td>
-                    <td style={{ padding: "8px 10px" }}>{row.bookChV}</td>
-                    <td style={{ padding: "8px 10px" }}>{row.language}</td>
-                    <td style={{ padding: "8px 10px" }}>{row.audio}</td>
-                    <td style={{ padding: "8px 10px" }}>
-                      {row.ok ? (
-                        <span style={{ color: "#1d4035", fontWeight: 800 }}>
-                          <CheckIcon className="h-4 w-4" style={{ display: "inline" }} /> OK
-                        </span>
-                      ) : (
-                        <span style={{ color: "#a11", fontWeight: 800 }}>
-                          <XIcon className="h-4 w-4" style={{ display: "inline" }} /> {row.errors[0]}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {checked.length > 20 ? (
-            <p className="pr-muted" style={{ margin: "10px 0 0", fontSize: "0.8rem" }}>
-              The table shows the first 20 songs of the file. All {checked.length} are imported.
-            </p>
-          ) : null}
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="pr-btn pr-btn-primary"
-              onClick={runImport}
-              disabled={importing || errorCount > 0}
-              title={errorCount ? "Fix the errors in the file first" : ""}
-            >
-              {importing ? (
-                <>
-                  <Loader2Icon className="h-4 w-4 animate-spin" style={{ display: "inline" }} /> Importing…
-                </>
-              ) : (
-                "Import the songs"
-              )}
-            </button>
-            {importing ? (
-              <span className="pr-muted" style={{ fontSize: "0.82rem" }}>{progress}% done</span>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-
-      {report ? (
-        <div style={{ marginTop: 16 }}>
-          <p className="pr-success" style={{ margin: "0 0 8px" }}>
-            {report.inserted} added, {report.updated} updated, {report.skipped} skipped.
-          </p>
-          {report.errors && report.errors.length ? (
-            <ul className="pr-list-reset" style={{ display: "grid", gap: 4, fontSize: "0.82rem" }}>
-              {report.errors.map((message, index) => (
-                <li key={index} style={{ color: "#a11" }}>
-                  {message}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
+  return <div className="pr-card pr-card-pad"><p className="pr-muted">Import creates or updates the matching series and songs; it does not delete other songs.</p>
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}><button type="button" className="pr-btn pr-btn-outline pr-btn-sm" onClick={downloadTemplate}><DownloadIcon className="h-4 w-4" style={{ display: "inline" }} /> Download template</button><button type="button" className="pr-btn pr-btn-primary pr-btn-sm" onClick={() => inputRef.current?.click()}><UploadIcon className="h-4 w-4" style={{ display: "inline" }} /> Choose JSON file</button><input ref={inputRef} type="file" accept="application/json,.json" hidden onChange={(event) => readFile(event.target.files?.[0])} /></div>
+    {fileName ? <p className="pr-muted">Selected: {fileName}</p> : null}{errors.length ? <ul style={{ color: "#a11", paddingInlineStart: 20 }}>{errors.map((item) => <li key={item}>{item}</li>)}</ul> : null}{error ? <div className="pr-error">{error}</div> : null}
+    <button type="button" className="pr-btn pr-btn-primary" disabled={busy || errors.length > 0 || !parsed} onClick={runImport}>{busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <UploadIcon className="h-4 w-4" />} Import songs</button>
+    {report ? <div className="pr-success" style={{ marginTop: 14 }}><CheckIcon className="h-4 w-4" style={{ display: "inline" }} /> Import complete: {report.inserted} inserted, {report.updated} updated, {report.skipped} skipped. Series saved.</div> : null}{raw && !parsed ? <div style={{ color: "#a11", marginTop: 10 }}><XIcon className="h-4 w-4" style={{ display: "inline" }} /> Check the JSON file and try again.</div> : null}
+  </div>;
 }

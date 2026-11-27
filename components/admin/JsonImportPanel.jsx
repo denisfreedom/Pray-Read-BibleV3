@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { callAdminData } from "@/lib/adminSession";
-import { prepareImport, importShapeOf } from "@/lib/prayerImport";
+import { prepareImport, importShapeOf, parsePrayerImportText } from "@/lib/prayerImport";
 import {
   UploadIcon,
   DownloadIcon,
@@ -160,7 +160,7 @@ export default function JsonImportPanel() {
     }
     let parsed;
     try {
-      parsed = JSON.parse(text);
+      parsed = parsePrayerImportText(text);
     } catch (err) {
       setError(`The file could not be read: ${err.message}`);
       setPayload(null);
@@ -190,8 +190,12 @@ export default function JsonImportPanel() {
   const onFile = (event) => {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".json")) {
-      setError("The file must be a JSON file (.json).");
+    if (file.size > 10 * 1024 * 1024) {
+      setError(`File is ${(file.size / 1024 / 1024).toFixed(1)} MB; the limit is 10 MB.`);
+      return;
+    }
+    if (!/\.(json|txt|jsonl)$/i.test(file.name)) {
+      setError("Choose a .json, .txt, or .jsonl file.");
       return;
     }
     const reader = new FileReader();
@@ -256,7 +260,7 @@ export default function JsonImportPanel() {
           <input
             ref={inputRef}
             type="file"
-            accept=".json,application/json"
+            accept=".json,.txt,.jsonl,application/json,text/plain"
             onChange={onFile}
             style={{ display: "none" }}
           />
