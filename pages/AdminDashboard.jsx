@@ -17,6 +17,7 @@ import JsonImportPanel from "@/components/admin/JsonImportPanel";
 import PrayerCrossRefImport from "@/components/admin/PrayerCrossRefImport";
 import CollectionsPanel from "@/components/admin/CollectionsPanel";
 import VerseSongsPanel from "@/components/admin/VerseSongsPanel";
+import QaPanel from "@/components/admin/QaPanel";
 import PassagesPanel from "@/components/admin/PassagesPanel";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon, HeartHandshakeIcon, ListIcon } from "lucide-react";
@@ -429,6 +430,7 @@ export default function AdminDashboard() {
           {section === "collections" ? <CollectionsPanel /> : null}
 
           {section === "songs" ? <VerseSongsPanel /> : null}
+      {section === "qa" ? <QaPanel /> : null}
 
           {section === "overview" ? (
             <div>
@@ -565,7 +567,7 @@ export default function AdminDashboard() {
             </div>
           ) : null}
 
-          {entity && fields && section !== "songs" ? (
+          {entity && fields && section !== "songs" && section !== "qa" ? (
             <div className="pr-card pr-card-pad">
               <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <h2 className="pr-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, textTransform: "capitalize" }}>

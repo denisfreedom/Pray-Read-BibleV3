@@ -44,8 +44,8 @@ export default function PassageTabs({ book, chapter, reference, language = "en" 
   });
 
   const { data: qaRows } = useQuery({
-    queryKey: ["qa"],
-    queryFn: () => fetchPublicCollection("qa", { authenticated: isAuthenticated })
+    queryKey: ["qaItems"],
+    queryFn: () => fetchPublicCollection("qaItems", { authenticated: isAuthenticated })
   });
 
   const commentary = useMemo(
@@ -66,7 +66,9 @@ export default function PassageTabs({ book, chapter, reference, language = "en" 
 
   const questions = useMemo(
     () =>
-      (qaRows || []).filter((row) => matchesPassage(row.passage_ref, book?.name, chapter) && safeText(row.answer)),
+      (qaRows || []).filter(
+        (row) => matchesPassage(row.scripture_ref, book?.name, chapter) && safeText(row.answer_en)
+      ),
     [qaRows, book, chapter]
   );
 
@@ -125,11 +127,15 @@ export default function PassageTabs({ book, chapter, reference, language = "en" 
             {questions.map((row) => (
               <article key={row.id}>
                 <p className="pr-heading" style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem" }}>
-                  {safeText(row.question)}
+                  {language === "lu" ? safeText(row.question_lu) : safeText(row.question_en)}
                 </p>
-                <p style={{ margin: "8px 0 0", fontSize: "0.9rem", lineHeight: 1.75 }}>{safeText(row.answer)}</p>
-                {row.answered_by ? (
-                  <p style={{ margin: "8px 0 0", fontSize: "0.78rem" }}>Answered by {safeText(row.answered_by)}</p>
+                <p style={{ margin: "8px 0 0", fontSize: "0.9rem", lineHeight: 1.75 }}>
+                  {language === "lu" ? safeText(row.answer_lu) : safeText(row.answer_en)}
+                </p>
+                {row.topic_en ? (
+                  <p style={{ margin: "8px 0 0", fontSize: "0.78rem" }}>
+                    <span className="pr-badge pr-badge-gold">{safeText(row.topic_en)}</span>
+                  </p>
                 ) : null}
               </article>
             ))}

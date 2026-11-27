@@ -27,7 +27,7 @@ const SECTIONS = [
   { id: "prayers", label: "Prayers", entity: "prayers" },
   { id: "prayerPassages", label: "Prayer passages", entity: "prayerPassages" },
   { id: "crossReferences", label: "Cross-references", entity: "crossReferences" },
-  { id: "qa", label: "Q&A", entity: "qa" },
+  { id: "qa", label: "Q&A", entity: "qaItems" },
   { id: "verseOfDay", label: "Verse of the day", entity: "verseOfDay" }
 ];
 
@@ -381,9 +381,15 @@ export default function Offline() {
 
       if (selected.includes("qa")) {
         setProgress({ label: "Q&A", done: 0, total: 1 });
-        const rows = await fetchPublicCollection("qa", { authenticated: true }).catch(() => []);
+        const [rows, topicRows] = await Promise.all([
+          fetchPublicCollection("qaItems", { authenticated: true }).catch(() => []),
+          fetchPublicCollection("qaTopics", { authenticated: true }).catch(() => [])
+        ]);
         for (const row of rows || []) {
-          await offline.put("qa", row.id, row);
+          await offline.put("qaItems", row.id || row.question_en, row);
+        }
+        for (const topic of topicRows || []) {
+          await offline.put("qaTopics", topic.id || topic.name_en, topic);
         }
       }
 

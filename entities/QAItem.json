@@ -1,0 +1,25 @@
+{
+  "name": "QAItem",
+  "description": "One question and answer of the Q&A library, in English and Luganda.",
+  "fields": [
+    { "name": "topic_en", "type": "string", "label": "Topic (English)" },
+    { "name": "topic_lu", "type": "string", "label": "Topic (Luganda)" },
+    { "name": "topic_id", "type": "string", "label": "Topic record" },
+    { "name": "scripture_ref", "type": "string", "label": "Scripture reference" },
+    { "name": "question_en", "type": "string", "required": true, "label": "Question (English)" },
+    { "name": "question_lu", "type": "string", "required": true, "label": "Question (Luganda)" },
+    { "name": "answer_en", "type": "string", "required": true, "label": "Answer (English)" },
+    { "name": "answer_lu", "type": "string", "required": true, "label": "Answer (Luganda)" },
+    { "name": "tags", "type": "string", "label": "Keywords / tags" },
+    { "name": "featured", "type": "boolean", "label": "Featured" },
+    { "name": "active", "type": "boolean", "label": "Active" },
+    { "name": "helpful_count", "type": "number", "label": "Helpful votes" }
+  ],
+  "x-fse2-access": {
+    "version": 1,
+    "rules": [
+      { "actions": ["read"], "subject": { "roles": ["*"] } },
+      { "actions": ["create", "update", "delete"], "subject": { "roles": ["owner", "admin"] } }
+    ]
+  }
+}

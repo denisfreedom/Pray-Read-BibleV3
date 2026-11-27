@@ -43,6 +43,8 @@ const MANAGED = [
   "VerseSongSeries",
   "VerseSongEpisode",
   "QAEntry",
+  "QATopic",
+  "QAItem",
   "Insight",
   "VerseOfDay",
   "Commentary",
@@ -107,6 +109,28 @@ const pickPresent = (row, aliases) => {
     }
   }
   return values;
+};
+
+// The questions of the Q&A library. The same file can be imported twice: a
+// question that is already in the library is updated instead of being added
+// a second time.
+const QA_ITEM_PLAN = {
+  entity: "QAItem",
+  key: (row) => `qa:${asText(row.topic_en).toLowerCase()}:${asText(row.question_en).toLowerCase()}`,
+  required: ["question_en", "question_lu", "answer_en", "answer_lu"],
+  aliases: {
+    topic_en: ["topic_en", "topicEn", "topic"],
+    topic_lu: ["topic_lu", "topicLu"],
+    scripture_ref: ["scripture_ref", "scriptureRef", "passage", "reference"],
+    question_en: ["question_en", "questionEn", "question"],
+    question_lu: ["question_lu", "questionLu"],
+    answer_en: ["answer_en", "answerEn", "answer"],
+    answer_lu: ["answer_lu", "answerLu"],
+    tags: ["tags", "keywords"],
+    featured: ["featured"],
+    active: ["active"]
+  },
+  normalise: { featured: asBoolean, active: asBoolean }
 };
 
 const IMPORT_PLANS = {
@@ -201,6 +225,8 @@ const IMPORT_PLANS = {
       author_email: ["author_email", "authorEmail", "email"]
     }
   },
+  QAItem: QA_ITEM_PLAN,
+  qa: QA_ITEM_PLAN,
   PrayerPassage: {
     entity: "PrayerPassage",
     bookScoped: true,
@@ -569,7 +595,7 @@ Deno.serve(async (req) => {
     if (action === "bulkImportJson") {
       const payload = body.payload || {};
       const entries = Object.entries(payload).filter(
-        ([key]) => key !== "mode" && key !== "metadata"
+        ([key]) => key !== "mode" && key !== "metadata" && key !== "format"
       );
       if (!entries.length) {
         return Response.json(

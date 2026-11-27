@@ -18,7 +18,7 @@ export default function Layout({ children, currentPageName }) {
             <PwaHead />
             <AppHeader currentPageName={currentPageName} />
             <main className="pr-main">{children}</main>
-            {currentPageName === "Home" ? <AppFooter /> : null}
+            {currentPageName === "Home" || currentPageName === "QA" ? <AppFooter /> : null}
             <GlobalPlayer />
           </div>
         </PlayerProvider>
