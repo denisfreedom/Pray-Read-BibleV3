@@ -558,15 +558,25 @@ export default function Chapter() {
     () => (passageRows || []).map((row) => normalisePassage(row)),
     [passageRows]
   );
+  const versePassages = useMemo(
+    () => chapterPassages.filter((row) => Number(row.verse) > 0 && !String(row.source || "").includes("closing")),
+    [chapterPassages]
+  );
 
   // The cross-references of this chapter: the ones that were imported for
   // it, and the ones the app already carried.
   const allCrossRefs = useMemo(() => {
     const list = [];
+    const imported = (crossRefRows || []).map(normaliseCrossRef);
+    const usableImported = imported.filter((row) => !row.unresolved && Number(row.ref_book_number) > 0 && Number(row.ref_chapter) > 0 && Number(row.ref_verse) > 0);
+    if (imported.length) {
+      imported.forEach((row) => list.push(row));
+      return list;
+    }
     const seen = new Set();
     (crossRefRows || []).forEach((row) => {
       const item = normaliseCrossRef(row);
-      const key = `${item.verse}:${item.ref_book_number}:${item.ref_chapter}:${item.ref_verse}`;
+      const key = `${item.verse}:${item.ref_book_number}:${item.ref_chapter}:${item.ref_verse}:${item.ref_verse_end}:${item.reference_text}`;
       if (seen.has(key)) return;
       seen.add(key);
       list.push(item);
@@ -589,13 +599,13 @@ export default function Chapter() {
 
   const crossRefGroups = useMemo(() => groupCrossRefsByVerse(allCrossRefs), [allCrossRefs]);
   const crossRefsForVerse = (verseNumber) => pickCrossRefsForVerse(allCrossRefs, verseNumber);
-  const passageForVerse = (verseNumber) => pickPassageForVerse(chapterPassages, verseNumber);
+  const passageForVerse = (verseNumber) => pickPassageForVerse(versePassages, verseNumber);
   // The marks the reader has made on one block of text.
   const annotationsFor = (blockId) =>
     annotations.filter((annotation) => annotation.block_id === blockId);
   // Every prayer passage written for a verse, so the reader sees the prayer
   // of the verse they are on without opening anything.
-  const passagesForVerse = (verseNumber) => pickPassagesForVerse(chapterPassages, verseNumber);
+  const passagesForVerse = (verseNumber) => pickPassagesForVerse(versePassages, verseNumber);
   const chapterPassage = useMemo(() => pickChapterPassage(chapterPassages), [chapterPassages]);
   const audioUrl = `https://www.wordproaudio.org/bibles/app/audio/1/${book.number}/${chapter}.mp3`;
   const chapterTrack = useMemo(() => {
@@ -628,7 +638,7 @@ export default function Chapter() {
   const closingPrayer = useMemo(() => {
     // The prayer that was imported for the whole chapter comes first, so
     // the chapter is never closed with the general prayer.
-    if (chapterPassage) {
+    if (chapterPassage && Number(chapterPassage.verse) <= 0) {
       return {
         title: chapterPassage.title_en || `Closing prayer for ${book.name} ${chapter}`,
         titleLu: chapterPassage.title_lu || "",
@@ -639,13 +649,7 @@ export default function Chapter() {
     }
     const prayer = chapterPrayers[0];
     if (prayer) return prayer;
-    return {
-      title: `Closing prayer for ${book.name} ${chapter}`,
-      titleLu: "",
-      body: `Father, thank You for Your Word. Let ${book.name} ${chapter} take root in my heart and show me how to live it today, in Jesus' name, Amen.`,
-      bodyLu: "",
-      ref: `${book.name} ${chapter}:1`
-    };
+    return null;
   }, [chapterPassage, chapterPrayers, book.name, chapter]);
 
   const prayerTextFor = (verseNumber) => {
@@ -1104,8 +1108,8 @@ export default function Chapter() {
                               <HeartHandshakeIcon className="h-4 w-4" aria-hidden="true" />
                               Prayer passage
                             </button>
-                            {verseCrossRefs.length ? (
-                              <button
+                                      {verseCrossRefs.length ? (
+              <button
                                 type="button"
                                 className={`pr-verse-tool${crossRefsOpen ? " is-active" : ""}`}
                                 aria-expanded={crossRefsOpen}
@@ -1141,7 +1145,6 @@ export default function Chapter() {
                                 language={displayLanguage}
                                 annotations={annotations}
                                 passages={[]}
-                                fallback={closingPrayer}
                                 onAnnotate={handleAnnotate}
                                 onRemove={handleRemove}
                                 onOpenPassage={handleOpenPassage}

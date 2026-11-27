@@ -166,6 +166,7 @@ export default function ChapterSelector({
         book={book}
         guide={guide}
         accent={accent}
+        language={lang}
         activeSection={section}
         onSectionChange={setSection}
         annotations={annotations}

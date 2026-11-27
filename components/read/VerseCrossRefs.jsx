@@ -49,14 +49,20 @@ export default function VerseCrossRefs({
           const note = language === "lu" ? row.note_lu : row.note_en;
           return (
             <li key={row.id || `${label}-${index}`}>
-              <button
-                type="button"
-                className="pr-passage-prayer-ref"
-                onClick={() => onOpenReference && onOpenReference(row)}
-              >
-                {label}
-              </button>
-              <CrossRefScripture row={row} language={language} versionId={versionId} />
+              {row.unresolved ? (
+                <p className="pr-passage-prayer-ref" style={{ margin: 0 }}>
+                  {label} <span title="This reference could not be matched to Bible coordinates">(unresolved reference)</span>
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className="pr-passage-prayer-ref"
+                  onClick={() => onOpenReference && onOpenReference(row)}
+                >
+                  {label}
+                </button>
+              )}
+              {!row.unresolved ? <CrossRefScripture row={row} language={language} versionId={versionId} /> : null}
               {note ? (
                 <p
                   style={{

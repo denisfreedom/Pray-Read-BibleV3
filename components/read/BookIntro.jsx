@@ -19,6 +19,7 @@ const ENCOURAGEMENT =
 export default function BookIntro({
   book,
   guide,
+  language = "en",
   accent,
   annotations,
   onAnnotate,
@@ -34,8 +35,9 @@ export default function BookIntro({
     queryKey: ["bookIntro", book.number],
     queryFn: () => fetchBookIntro(book.number)
   });
-  const importedIntro = imported ? imported.intro_en || imported.intro_lu : "";
-  const intro = importedIntro || guide.intro;
+  const importedIntro = imported ? (language === "lu" ? imported.intro_lu || "" : imported.intro_en || "") : "";
+  const intro = imported ? importedIntro : (language === "lu" ? "" : guide.intro);
+  const title = imported?.title_en || imported?.title_lu || "";
 
   const openReference = (label, event) => {
     if (selectionInside(event.currentTarget)) return;
@@ -57,6 +59,7 @@ export default function BookIntro({
         </span>
       </div>
 
+      {title ? <p className="pr-sel-panel-title">{title}</p> : null}
       <AnnotatedText
         as="p"
         blockId="intro-main"
@@ -68,7 +71,7 @@ export default function BookIntro({
         className="pr-sel-paragraph"
       />
 
-      <AnnotatedText
+      {!importedIntro ? <AnnotatedText
         as="p"
         blockId="intro-soft"
         section="intro"
@@ -77,7 +80,7 @@ export default function BookIntro({
         onAnnotate={onAnnotate}
         onRemove={onRemove}
         className="pr-sel-paragraph pr-sel-paragraph-soft"
-      />
+      /> : null}
 
       <p className="pr-sel-panel-title pr-sel-subtitle">Key passages</p>
       <div className="pr-sel-refs">

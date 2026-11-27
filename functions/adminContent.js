@@ -4,6 +4,32 @@
 
 const encoder = new TextEncoder();
 
+const numberOr = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const passageNaturalKey = (passage) => [
+  numberOr(passage.book_number),
+  numberOr(passage.chapter),
+  numberOr(passage.verse),
+  numberOr(passage.verse_end),
+  String(passage.source || "").startsWith("book_import:chapter_closing")
+    ? "chapter_closing"
+    : String(passage.source || "").startsWith("book_import:book_closing")
+      ? "book_closing"
+      : "passage"
+].join(":");
+const crossRefNaturalKey = (reference) => [
+  numberOr(reference.book_number),
+  numberOr(reference.chapter),
+  numberOr(reference.verse),
+  numberOr(reference.ref_book_number),
+  numberOr(reference.ref_chapter),
+  numberOr(reference.ref_verse),
+  numberOr(reference.ref_verse_end),
+  String(reference.reference_text || "").trim().toLowerCase()
+].join(":");
+
 // A session that has just run out is still accepted for a while, so a long
 // job is never cut off in the middle by the clock.
 const RENEW_GRACE_MS = 1000 * 60 * 60 * 24 * 14;
@@ -73,7 +99,22 @@ const asText = (value) => {
   if (Array.isArray(value)) {
     return value.map((item) => asText(item)).filter(Boolean).join(", ");
   }
+  if (typeof value === "object") return "";
   return String(value).trim();
+};
+
+const asLanguageText = (value, language) => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const keys = language === "lu"
+      ? ["lu", "luganda", "text_lu", "intro_lu", "prayer_lu", "body_lu", "introduction_luganda"]
+      : ["en", "english", "text_en", "intro_en", "prayer_en", "body_en", "introduction"];
+    for (const key of keys) {
+      const text = asText(value[key]);
+      if (text) return text;
+    }
+    return "";
+  }
+  return language === "lu" ? "" : asText(value);
 };
 
 const asNumber = (value) => {
@@ -293,10 +334,7 @@ const IMPORT_PLANS = {
     // the verse and the verse the run ends at. It is the same key the
     // reader side uses, so a book that is imported through either admin
     // tab is updated instead of being written twice.
-    key: (row) =>
-      `${asNumber(row.book_number)}:${asNumber(row.chapter)}:${asNumber(row.verse)}:${asNumber(
-        row.verse_end
-      )}`,
+    key: passageNaturalKey,
     required: ["book_number", "chapter"],
     aliases: {
       book_number: ["book_number", "bookNumber"],
@@ -321,13 +359,8 @@ const IMPORT_PLANS = {
   CrossReference: {
     entity: "CrossReference",
     bookScoped: true,
-    // The natural key is the verse the reference hangs on and the verse it
-    // points at.
-    key: (row) =>
-      `${asNumber(row.book_number)}:${asNumber(row.chapter)}:${asNumber(row.verse)}:${asNumber(
-        row.ref_book_number
-      )}:${asNumber(row.ref_chapter)}:${asNumber(row.ref_verse)}`,
-    required: ["book_number", "chapter", "verse", "ref_book_number", "ref_chapter", "ref_verse"],
+    key: crossRefNaturalKey,
+    required: ["book_number", "chapter", "verse"],
     aliases: {
       book_number: ["book_number", "bookNumber"],
       chapter: ["chapter"],
@@ -335,8 +368,10 @@ const IMPORT_PLANS = {
       ref_book_number: ["ref_book_number", "refBookNumber"],
       ref_chapter: ["ref_chapter", "refChapter"],
       ref_verse: ["ref_verse", "refVerse"],
+      reference_text: ["reference_text", "referenceText", "reference", "ref"],
       ref_verse_end: ["ref_verse_end", "refVerseEnd"],
-      ref_text_en: ["ref_text_en", "refTextEn", "text_en"],
+      unresolved: ["unresolved"],
+      ref_text_en: ["ref_text_en", "refTextEn", "text_en", "ref_text", "refText"],
       ref_text_lu: ["ref_text_lu", "refTextLu", "text_lu"],
       note_en: ["note_en", "noteEn"],
       note_lu: ["note_lu", "noteLu"],
@@ -346,10 +381,11 @@ const IMPORT_PLANS = {
       book_number: asNumber,
       chapter: asNumber,
       verse: asNumber,
-      ref_book_number: asNumber,
-      ref_chapter: asNumber,
-      ref_verse: asNumber,
-      ref_verse_end: asNumber
+      unresolved: asBoolean,
+      ref_book_number: asNumberOrNull,
+      ref_chapter: asNumberOrNull,
+      ref_verse: asNumberOrNull,
+      ref_verse_end: asNumberOrNull
     }
   },
   ChapterIntro: {
@@ -378,9 +414,9 @@ const IMPORT_PLANS = {
       book_number: ["book_number", "bookNumber"],
       book_name: ["book_name", "bookName", "book"],
       title_en: ["title_en", "titleEn", "title"],
-      title_lu: ["title_lu", "titleLu"],
+      title_lu: ["title_lu", "titleLu", "title_luganda"],
       intro_en: ["intro_en", "introEn", "introduction", "body_en"],
-      intro_lu: ["intro_lu", "introLu", "introduction_luganda", "body_lu"],
+      intro_lu: ["intro_lu", "introLu", "introduction_luganda", "body_lu", "introductionLu"],
       closing_prayer_en: ["closing_prayer_en", "closingPrayerEn", "closing_prayer"],
       closing_prayer_lu: ["closing_prayer_lu", "closingPrayerLu", "closing_prayer_luganda"],
       source: ["source"]
@@ -446,7 +482,8 @@ const buildValues = (plan, row) => {
   const values = {};
   for (const [key, raw] of Object.entries(picked)) {
     const normaliser = plan.normalise ? plan.normalise[key] : null;
-    values[key] = normaliser ? normaliser(raw) : asText(raw);
+    const language = key.endsWith("_lu") ? "lu" : "en";
+    values[key] = normaliser ? normaliser(raw) : (key.endsWith("_en") || key.endsWith("_lu") ? asLanguageText(raw, language) : asText(raw));
   }
   return values;
 };
@@ -753,9 +790,15 @@ Deno.serve(async (req) => {
           );
           for (const book of books) {
             const found = await fse2.entities[plan.entity]
-              .filter({ book_number: book })
+              .filter({ book_number: book }, "-updated_date", 1000)
               .catch(() => []);
             for (const record of found || []) existing.push(record);
+          }
+          if (plan.entity === "CrossReference") {
+            const unresolved = await fse2.entities[plan.entity].list("-updated_date", 1000).catch(() => []);
+            for (const record of unresolved || []) {
+              if (Number(record.book_number) && books.includes(Number(record.book_number)) && !existing.some((item) => item.id === record.id)) existing.push(record);
+            }
           }
         } else {
           const found = await fse2.entities[plan.entity].list("-updated_date", 1000).catch(() => []);
@@ -790,7 +833,8 @@ Deno.serve(async (req) => {
                 skipped += 1;
                 continue;
               }
-              await fse2.entities[plan.entity].update(current.id, values);
+              const merged = values;
+              await fse2.entities[plan.entity].update(current.id, merged);
               updated += 1;
             } else {
               const record = await fse2.entities[plan.entity].create(values);

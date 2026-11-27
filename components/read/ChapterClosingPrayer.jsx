@@ -63,7 +63,10 @@ export default function ChapterClosingPrayer({
             className="pr-closing-text"
           />
         ) : null}
-        {mode === "lu" && !english && luganda ? (
+        {mode === "lu" && !luganda ? (
+          <p className="pr-closing-text">Luganda translation is not available.</p>
+        ) : null}
+        {mode === "lu" && luganda ? (
           <AnnotatedText
             blockId={lugandaBlock}
             section="closing-prayer"

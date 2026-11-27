@@ -19,6 +19,7 @@ export default function BookSidebar({
   book,
   guide,
   accent,
+  language = "en",
   activeSection,
   onSectionChange,
   annotations,
@@ -64,6 +65,7 @@ export default function BookSidebar({
               book={book}
               guide={guide}
               accent={accent}
+              language={language}
               annotations={annotations}
               onAnnotate={onAnnotate}
               onRemove={onRemove}
@@ -95,6 +97,7 @@ export default function BookSidebar({
               onAnnotate={onAnnotate}
               onRemove={onRemove}
               onOpenPassage={onOpenPassage}
+              language={language}
             />
           </div>
         ) : null}

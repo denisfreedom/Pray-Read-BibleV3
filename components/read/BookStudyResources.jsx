@@ -159,16 +159,14 @@ export default function BookStudyResources({ book, onOpenPassage, openSignal = 0
     // The overview of the book is the introduction that was imported for
     // it. The text the app builds on its own is only used when nothing was
     // imported.
-    const importedOverview = safeText(importedBookIntro?.intro_en);
-    const importedOverviewLu = safeText(importedBookIntro?.intro_lu);
     const bundled = [
       {
         key: `overview-${book.number}`,
         badge: "Book overview",
         badgePassage: false,
-        title: safeText(importedBookIntro?.title_en) || `About ${book.name}`,
-        body: importedOverview || guide.intro || "",
-        bodyLu: importedOverviewLu,
+        title: (importedBookIntro && importedBookIntro.title_en) || `About ${book.name}`,
+        body: (importedBookIntro && (importedBookIntro.intro_en || importedBookIntro.intro_lu)) || guide.intro || "",
+        bodyLu: (importedBookIntro && importedBookIntro.intro_lu) || "",
         passage: null,
         linkLabel: "Read the passage"
       }

@@ -15,6 +15,7 @@ import { Loader2Icon } from "lucide-react";
 
 /** The label of a reference: "Isaiah 34:1" or "Isaiah 14:13-14". */
 export const referenceLabel = (row) => {
+  if (row?.unresolved && row?.reference_text) return String(row.reference_text);
   const book = getBookByNumber(Number(row && row.ref_book_number));
   const name = book ? book.name : "";
   const chapter = Number(row && row.ref_chapter) || 0;
@@ -28,6 +29,7 @@ export const referenceLabel = (row) => {
 export default function CrossRefScripture({ row, language = "en", versionId = "kjv" }) {
   const bookNumber = Number(row && row.ref_book_number) || 0;
   const chapter = Number(row && row.ref_chapter) || 0;
+  const isUnresolved = Boolean(row?.unresolved || !getBookByNumber(bookNumber) || !chapter || !Number(row?.ref_verse));
   const book = getBookByNumber(bookNumber);
   const stored = language === "lu" ? row.ref_text_lu : row.ref_text_en;
 
@@ -41,6 +43,7 @@ export default function CrossRefScripture({ row, language = "en", versionId = "k
   });
 
   const text = useMemo(() => {
+    if (isUnresolved) return "";
     if (stored) return stored;
     const verses = Array.isArray(data) ? data : (data && data.verses) || [];
     const from = Number(row.ref_verse) || 0;
@@ -53,6 +56,14 @@ export default function CrossRefScripture({ row, language = "en", versionId = "k
       .map((verse) => `${verse.verse} ${verse.text}`)
       .join(" ");
   }, [stored, data, row.ref_verse, row.ref_verse_end]);
+
+  if (isUnresolved) {
+    return (
+      <p style={{ margin: "4px 0 0", fontSize: "calc(0.85rem * var(--pr-verse-scale, 1))" }}>
+        This reference could not be matched to a Bible passage.
+      </p>
+    );
+  }
 
   if (stored) {
     return (

@@ -47,6 +47,14 @@ const readCollection = async (collection) => {
       return await fse2.entities.Commentary.list("-updated_date", 300);
     case "verses":
       return await fse2.entities.BibleVerse.list("-updated_date", 2000);
+    case "prayerPassages":
+      return await fse2.entities.PrayerPassage.list("-updated_date", 50000);
+    case "crossReferences":
+      return await fse2.entities.CrossReference.list("-updated_date", 50000);
+    case "chapterIntros":
+      return await fse2.entities.ChapterIntro.list("-updated_date", 5000);
+    case "bookIntros":
+      return await fse2.entities.BookIntro.list("-updated_date", 500);
     case "plan":
       return await fse2.entities.ReadingPlan.list("-updated_date", 200);
     case "settings":

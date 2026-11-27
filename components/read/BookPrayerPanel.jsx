@@ -20,23 +20,25 @@ export default function BookPrayerPanel({
   annotations,
   onAnnotate,
   onRemove,
-  onOpenPassage
+  onOpenPassage,
+  language: readerLanguage = "en"
 }) {
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState(readerLanguage);
   const { data: imported } = useQuery({
     queryKey: ["bookIntro", book.number],
     queryFn: () => fetchBookIntro(book.number)
   });
-  const importedPrayer =
-    imported && (imported.closing_prayer_en || imported.closing_prayer_lu)
-      ? {
-          title: imported.title_en || `Closing prayer for ${book.name}`,
-          body: imported.closing_prayer_en || "",
-          body_lu: imported.closing_prayer_lu || ""
-        }
-      : null;
-  const prayer = importedPrayer || getBookPrayer(book);
-  const source = language === "lu" ? prayer.body_lu || prayer.body : prayer.body;
+  const hasImportedPrayer = Boolean(imported?.closing_prayer_en || imported?.closing_prayer_lu);
+  const importedPrayer = hasImportedPrayer
+    ? {
+        title: imported.title_en || imported.title_lu || `Closing prayer for ${book.name}`,
+        body: imported.closing_prayer_en || "",
+        body_lu: imported.closing_prayer_lu || ""
+      }
+    : null;
+  const prayer = hasImportedPrayer ? importedPrayer : getBookPrayer(book);
+  const prayerTitle = language === "lu" ? prayer.title_lu || "" : prayer.title || prayer.title_en || "";
+  const source = language === "lu" ? prayer.body_lu : prayer.body;
   const inline = useMemo(() => buildInlineNodes(source), [source]);
   const blockId = `prayer-${language}`;
 
@@ -82,7 +84,7 @@ export default function BookPrayerPanel({
   return (
     <div className="pr-sel-prayer">
       <div className="pr-sel-prayer-head">
-        <p className="pr-sel-panel-title">{prayer.title}</p>
+        <p className="pr-sel-panel-title">{prayerTitle}</p>
         <div className="pr-sel-lang-toggle" role="group" aria-label="Prayer language">
           <button
             type="button"
@@ -101,6 +103,9 @@ export default function BookPrayerPanel({
         </div>
       </div>
 
+      {language === "lu" && !source ? (
+        <p className="pr-sel-prayer-body">Luganda translation is not available.</p>
+      ) : null}
       <AnnotatedText
         as="p"
         blockId={blockId}
@@ -133,6 +138,7 @@ export default function BookPrayerPanel({
           <p className="pr-sel-panel-title pr-sel-subtitle">From the prayer library</p>
           {bookPrayers.map((row) => {
             const reference = parseReference(row.scripture_ref);
+            const body = language === "lu" ? row.body_lu || "" : row.body_en;
             return (
               <div key={row.title} className="pr-sel-library-card">
                 <p className="pr-sel-library-title">{row.title}</p>
@@ -149,7 +155,7 @@ export default function BookPrayerPanel({
                   </button>
                 ) : null}
                 <p className="pr-sel-library-body">
-                  {language === "lu" ? row.body_lu || row.body_en : row.body_en}
+                  {body || (language === "lu" ? "Luganda translation is not available." : "")}
                 </p>
               </div>
             );

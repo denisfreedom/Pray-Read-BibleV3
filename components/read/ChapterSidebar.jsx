@@ -86,10 +86,16 @@ export default function ChapterSidebar({
     enabled: !!bookNumber && !!chapter
   });
 
-  const intro = useMemo(
+  const generatedIntro = useMemo(
     () => getChapterIntro(book, chapter, verses),
     [bookNumber, chapter, verses]
   );
+  const intro = importedIntro ? {
+    heading: language === "lu" ? importedIntro.title_lu || `Chapter ${chapter}` : importedIntro.title_en || importedIntro.title_lu || `Chapter ${chapter}`,
+    body: language === "lu" ? importedIntro.intro_lu || "" : importedIntro.intro_en || importedIntro.intro_lu || "",
+    range: "",
+    anchor: null
+  } : (language === "lu" ? { heading: `Chapter ${chapter}`, body: "", range: "", anchor: null } : generatedIntro);
   const commentary = useMemo(
     () =>
       getChapterCommentary(book, chapter, {
@@ -155,18 +161,18 @@ export default function ChapterSidebar({
             {importedIntro ? (
               <>
                 <h3 className="pr-chapter-heading">
-                  {importedIntro.title_en || `The introduction to ${book.name} ${chapter}`}
+                  {language === "lu" ? importedIntro.title_lu || `The introduction to ${book.name} ${chapter}` : importedIntro.title_en || importedIntro.title_lu || `The introduction to ${book.name} ${chapter}`}
                 </h3>
                 <AnnotatedText
                   blockId={introBlock}
                   section="chapter-intro"
-                  text={importedIntro.intro_en}
+                  text={language === "lu" ? importedIntro.intro_lu || "" : importedIntro.intro_en || importedIntro.intro_lu || ""}
                   annotations={forBlock(introBlock)}
                   onAnnotate={onAnnotate}
                   onRemove={onRemove}
                   className="pr-chapter-body"
                 />
-                {importedIntro.intro_lu && language !== "en" ? (
+                {importedIntro.intro_lu && language !== "en" && importedIntro.intro_lu !== importedIntro.intro_en ? (
                   <AnnotatedText
                     blockId={`${introBlock}-lu`}
                     section="chapter-intro"
@@ -282,16 +288,17 @@ export default function ChapterSidebar({
             </div>
           </header>
           <div className="pr-chapter-scroll">
-            {passages.map((passage, index) => {
+            {passages.filter((passage) => passage.verse == null && String(passage.source || "").toLowerCase().includes("closing") && !String(passage.source || "").toLowerCase().includes("book_closing")).map((passage, index) => {
               const key = `imported-prayer-${index}`;
               const english = passage.prayer_en || "";
               const luganda = passage.prayer_lu || "";
               const title = language === "lu"
-                ? passage.title_lu || passage.title_en
-                : passage.title_en || passage.title_lu;
+              ? passage.title_lu || ""
+              : passage.title_en || passage.title_lu;
               if (!title && !english && !luganda) return null;
-              const text = language === "lu" ? luganda || english : english || luganda;
+              const text = language === "lu" ? luganda : english || luganda;
               const luText = language === "both" && luganda ? shorten(luganda) : "";
+              if (language === "lu" && !text) return null;
               const open = openPrayer === key;
               return (
                 <article key={key} className="pr-chapter-prayer">
@@ -350,17 +357,22 @@ export default function ChapterSidebar({
                 </article>
               );
             })}
-            {prayers.map((prayer, index) => {
+            {prayers.filter((prayer) => {
+              const parsed = parseReference(prayer.ref || prayer.scripture_ref || "");
+              const inChapter = parsed && parsed.bookNumber === book.number && parsed.chapter === chapter;
+              const importedClosingExists = passages.some((passage) => passage.verse == null && String(passage.source || "").toLowerCase().includes("closing") && !String(passage.source || "").toLowerCase().includes("book_closing"));
+              return inChapter && !importedClosingExists;
+            }).map((prayer, index) => {
               const english = prayer.body || "";
               const luganda = prayer.bodyLu || "";
               const text =
-                (language === "lu" ? luganda || english : english || luganda) || "";
+                (language === "lu" ? luganda : english || luganda) || "";
               if (!text) return null;
               const luText = language === "both" && luganda ? shorten(luganda) : "";
               return (
                 <article key={`prayer-${index}`} className="pr-chapter-prayer">
                   <p className="pr-chapter-prayer-title">
-                    {language === "lu" && prayer.titleLu ? prayer.titleLu : prayer.title}
+                    {language === "lu" ? prayer.titleLu || "" : prayer.title}
                   </p>
                   <AnnotatedText
                     blockId={`${prayerBlock}-${index}`}
@@ -438,22 +450,28 @@ export default function ChapterSidebar({
                   const target = getBookByNumber(row.ref_book_number);
                   const name = target ? target.name : `Book ${row.ref_book_number}`;
                   const text =
-                    language === "lu" ? row.ref_text_lu || row.ref_text_en : row.ref_text_en || row.ref_text_lu;
-                  const note = language === "lu" ? row.note_lu || row.note_en : row.note_en || row.note_lu;
+                    language === "lu" ? row.ref_text_lu || "" : row.ref_text_en || row.ref_text_lu;
+                  const note = language === "lu" ? row.note_lu || "" : row.note_en || row.note_lu;
                   return (
                     <div key={row.id || index} style={{ marginTop: 10 }}>
-                      <button
-                        type="button"
-                        className="pr-chapter-ref"
-                        onClick={() => onOpenCrossRef && onOpenCrossRef(row)}
-                      >
-                        {referenceLabel(row) || `${name} ${row.ref_chapter}:${row.ref_verse}`}
-                      </button>
-                      {text ? (
+                      {row.unresolved ? (
+                        <p className="pr-chapter-ref">
+                          {referenceLabel(row) || row.reference_text} <span title="This reference could not be matched to Bible coordinates">(unresolved reference)</span>
+                        </p>
+                      ) : (
+                        <button
+                          type="button"
+                          className="pr-chapter-ref"
+                          onClick={() => onOpenCrossRef && onOpenCrossRef(row)}
+                        >
+                          {referenceLabel(row) || `${name} ${row.ref_chapter}:${row.ref_verse}`}
+                        </button>
+                      )}
+                      {row.unresolved ? null : text ? (
                         <p className="pr-chapter-body" style={{ marginTop: 6 }}>
                           {text}
                         </p>
-                      ) : (
+                      ) : row.unresolved ? null : (
                         <CrossRefScripture row={row} language={language} versionId="kjv" />
                       )}
                       {note ? (

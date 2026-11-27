@@ -23,7 +23,9 @@ export const matchesPassage = (reference, bookName, chapter, verse) => {
   if (!numbers.length) return false;
   if (numbers[0] !== Number(chapter)) return false;
   if (numbers.length === 1) return true;
-  return numbers.slice(1).includes(Number(verse));
+  const start = numbers[1];
+  const end = numbers.length > 2 ? numbers[2] : start;
+  return Number(verse) >= start && Number(verse) <= end;
 };
 
 export default function PassagePrayer({
@@ -66,22 +68,23 @@ export default function PassagePrayer({
     if (reference && onOpenPassage) onOpenPassage(reference);
   };
 
-  // The prayer written for this verse comes first. When there is none, the
-  // prayer of the library for this verse is used, and when there is none of
-  // those either, the prayer that closes the chapter.
+  // Verse prayer passages and library prayers are shown here. Chapter-closing
+  // prayers are rendered only by the chapter-end section.
   const shown = useMemo(() => {
     if ((passages || []).length) {
-      return passages.map((row) => ({
+      return passages
+        .filter((row) => Number(row.verse) > 0 && !String(row.source || "").toLowerCase().includes("closing"))
+        .map((row) => ({
         key: row.id || `${row.chapter}-${row.verse || 0}-${row.title_en}`,
         title: row.title_en,
         titleLu: row.title_lu,
         bodyEn: row.prayer_en,
         bodyLu: row.prayer_lu,
         ref: row.scripture_ref
-      }));
+        }));
     }
     if (matches.length) {
-      return matches.map((row) => ({
+      return matches.filter((row) => !String(row.source || "").toLowerCase().includes("closing")).map((row) => ({
         key: row.id || row.title,
         title: row.title,
         titleLu: row.title_lu,
@@ -89,18 +92,6 @@ export default function PassagePrayer({
         bodyLu: row.body_lu,
         ref: row.scripture_ref
       }));
-    }
-    if (fallback && (fallback.body || fallback.bodyLu)) {
-      return [
-        {
-          key: "chapter-prayer",
-          title: fallback.title,
-          titleLu: fallback.titleLu,
-          bodyEn: fallback.body,
-          bodyLu: fallback.bodyLu,
-          ref: fallback.ref
-        }
-      ];
     }
     return [];
   }, [matches, fallback, passages]);
@@ -164,7 +155,7 @@ export default function PassagePrayer({
       ) : (
         shown.map((row, index) => {
           const blockId = `prayer-passage-${book}-${chapter}-${verse || 0}-${index}`;
-          const body = mode === "lu" ? row.bodyLu || row.bodyEn : row.bodyEn || row.bodyLu;
+          const body = mode === "lu" ? row.bodyLu : row.bodyEn || row.bodyLu;
           return (
             <div key={row.key || index} style={{ marginTop: 12 }}>
               <p
