@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import { callAdminData } from "@/lib/adminSession";
-import { bookFileCollections, isBookFile } from "@/lib/bookImport";
-import { BACKFILL_FILE_FORMAT, PRAYER_FILE_FORMAT, prayerCrossRefCollections, validatePrayerFile } from "@/lib/prayerImport";
+import { prepareImport, importShapeOf } from "@/lib/prayerImport";
 import {
   UploadIcon,
   DownloadIcon,
@@ -99,33 +98,25 @@ export const normalisePayload = (parsed) => {
  * of those two collections are prepared from it.
  */
 const preparePayload = (parsed) => {
-  // A file in the prayer-crossrefs format: its prayers become the prayer
-  // passages and its cross-references become the cross-references.
-  if (parsed && (parsed.format === PRAYER_FILE_FORMAT || parsed.format === BACKFILL_FILE_FORMAT)) {
-    const validation = validatePrayerFile(parsed);
-    if (!validation.ok) return { error: `The prayer and cross-reference file is blocked: ${validation.errors.slice(0, 12).join(" ")}` };
-    const prepared = prayerCrossRefCollections(parsed);
+  // Both shapes of the prayer files are read in one place, so a whole-book
+  // file is imported the same way here as it is in the other admin tab.
+  const shape = importShapeOf(parsed);
+  if (shape) {
+    const prepared = prepareImport(parsed);
     if (!prepared.ok) {
-      const first = prepared.errors.slice(0, 3).map((item) => item.message).join(" ");
-      return { error: `The file was read, but ${prepared.errors.length} row(s) must be fixed first. ${first}` };
+      const first = prepared.errors.slice(0, 3).join(" ");
+      if (shape === "book") return { error: first };
+      return { error: `The prayer and cross-reference file is blocked: ${first}` };
     }
     return {
       collections: prepared.collections,
       notes: [
+        ...(prepared.notes || []),
         "The prayers of the file are imported as the prayer passages and the cross-references as the cross-references.",
         "A prayer that has no Luganda text yet is imported with its Luganda section empty, so you can write it later in the content manager."
       ],
-      warnings: prepared.warnings.map((item) => ({ message: item.message }))
+      warnings: prepared.warnings.map((message) => ({ message }))
     };
-  }
-  if (isBookFile(parsed)) {
-    const { collections, expanded } = bookFileCollections(parsed);
-    if (!expanded.book.book_number) {
-      return {
-        error: `The book "${parsed.book || "(missing)"}" is not one of the 66 books of the Bible.`
-      };
-    }
-    return { collections, notes: expanded.notes, warnings: expanded.warnings };
   }
   const collections = normalisePayload(parsed);
   if (!Object.keys(collections).length) {

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
 import { safeText } from "@/lib/format";
 import { getBookGuide } from "@/lib/bookGuides";
+import { fetchBookIntro } from "@/lib/bookIntro";
 import { getBookStudyInsights } from "@/lib/bookStudyContent";
 import { parseOutlineRange, parseReference, resolveBook } from "@/lib/scriptureRefs";
 import { INSIGHTS } from "@/lib/seedContent";
@@ -87,6 +88,15 @@ export default function BookStudyResources({ book, onOpenPassage, openSignal = 0
     }, 80);
   }, [openSignal]);
 
+  // The introduction that was imported for this book. When the content
+  // manager has written one, it stands in place of the overview the app
+  // builds on its own.
+  const { data: importedBookIntro } = useQuery({
+    queryKey: ["bookIntro", book.number],
+    queryFn: () => fetchBookIntro(book.number),
+    enabled: Boolean(book && book.number)
+  });
+
   const { data: commentaryRows } = useQuery({
     queryKey: ["studyCommentary"],
     queryFn: async () => {
@@ -146,14 +156,19 @@ export default function BookStudyResources({ book, onOpenPassage, openSignal = 0
     // No published commentary for this book yet: fall back to the study
     // notes written for it, so the reader always finds something here.
     const guide = getBookGuide(book);
+    // The overview of the book is the introduction that was imported for
+    // it. The text the app builds on its own is only used when nothing was
+    // imported.
+    const importedOverview = safeText(importedBookIntro?.intro_en);
+    const importedOverviewLu = safeText(importedBookIntro?.intro_lu);
     const bundled = [
       {
         key: `overview-${book.number}`,
         badge: "Book overview",
         badgePassage: false,
-        title: `About ${book.name}`,
-        body: guide.intro || "",
-        bodyLu: "",
+        title: safeText(importedBookIntro?.title_en) || `About ${book.name}`,
+        body: importedOverview || guide.intro || "",
+        bodyLu: importedOverviewLu,
         passage: null,
         linkLabel: "Read the passage"
       }
@@ -185,7 +200,7 @@ export default function BookStudyResources({ book, onOpenPassage, openSignal = 0
     });
 
     return bundled;
-  }, [commentaryRows, book]);
+  }, [commentaryRows, book, importedBookIntro]);
 
   const insights = useMemo(() => {
     const build = (kind) => {

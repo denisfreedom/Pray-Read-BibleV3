@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BIBLE_BOOKS } from "@/lib/bibleBooks";
-import { TEMPLATE_URL, bookNameFor, importPrayerFile, missingCrossRefsTemplateText, prayerTemplateText, readImportedContent, validatePrayerFile } from "@/lib/prayerImport";
-import { expandBookFile, isBookFile } from "@/lib/bookImport";
+import { TEMPLATE_URL, bookNameFor, missingCrossRefsTemplateText, prepareImport, prayerTemplateText, readImportedContent } from "@/lib/prayerImport";
+import { callAdminData } from "@/lib/adminSession";
 import { AlertTriangleIcon, CheckCircleIcon, DownloadIcon, Link2Icon, Loader2Icon, ListIcon, UploadIcon } from "lucide-react";
 
 const truncate = (value, limit = 70) => {
@@ -40,16 +40,14 @@ export default function PrayerCrossRefImport() {
     const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
     const link = document.createElement("a"); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url);
   };
-  const prepare = (parsed) => {
-    if (!isBookFile(parsed)) return parsed;
-    const expanded = expandBookFile(parsed);
-    return { ...expanded.file, book_intro: expanded.bookIntro };
-  };
+  // One reader for both file shapes. A whole-book file is read the same
+  // way here as it is in the other admin tab, so a book with bare
+  // cross-references is never blocked by the flat-file rules.
   const check = () => {
     setReport(null); setParseError("");
     let parsed;
     try { parsed = JSON.parse(raw); } catch (error) { setParseError(`The file is not valid JSON: ${error.message}`); setChecked(null); return; }
-    const result = validatePrayerFile(prepare(parsed));
+    const result = prepareImport(parsed);
     setChecked(result);
     if (result.rows?.bookNumber) setBookNumber(result.rows.bookNumber);
     const first = result.rows?.prayers?.[0]?.chapter || result.rows?.chapterIntros?.[0]?.chapter;
@@ -59,8 +57,12 @@ export default function PrayerCrossRefImport() {
     if (!checked?.ok) return;
     setBusy(true); setReport(null);
     try {
-      const result = await importPrayerFile(prepare(JSON.parse(raw)));
-      setReport({ ...result, errors: [] });
+      const prepared = prepareImport(JSON.parse(raw));
+      if (!prepared.ok) throw new Error(prepared.errors.join("\n"));
+      const payload = { ...prepared.collections };
+      if (prepared.rows?.backfillOnly) payload.mode = "backfill";
+      const result = await callAdminData("bulkImportJson", { payload });
+      setReport({ ...result, errors: result?.errors || [] });
       await queryClient.invalidateQueries({ queryKey: ["installedPassages"] });
     } catch (error) {
       setReport({ errors: [error.message || "The import stopped early."], summary: null });
@@ -90,7 +92,7 @@ export default function PrayerCrossRefImport() {
       {fileName ? <p style={{ margin: "0 0 10px", fontSize: "0.82rem" }}>Ready to check: <strong>{fileName}</strong></p> : null}
       <div className="pr-field"><label className="pr-label" htmlFor="prayer-json">Or paste JSON here</label><textarea id="prayer-json" className="pr-textarea" style={{ minHeight: 160, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.82rem" }} value={raw} onChange={(event) => { setRaw(event.target.value); setChecked(null); setReport(null); }} placeholder='{ "format": "pray-read-prayer-crossrefs-v1", "book_number": 19, "prayers": [], "cross_references": [] }' /></div>
       <button type="button" className="pr-btn pr-btn-primary" onClick={check} disabled={!raw.trim()}><CheckCircleIcon className="h-4 w-4" /> Check file</button>
-      <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 10, border: "1px solid var(--pr-border)", background: "rgba(255, 253, 248, 0.7)" }}><p className="pr-eyebrow" style={{ margin: "0 0 8px" }}>Accepted formats</p><p style={{ margin: 0, fontSize: "0.82rem" }}>Regular file: prayers, cross_references, optional chapter_intros and book_intro. Backfill file: format "pray-read-crossrefs-backfill-v1", book_number, book_name and cross_references. All four reference text and note fields are required.</p></div>
+      <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 10, border: "1px solid var(--pr-border)", background: "rgba(255, 253, 248, 0.7)" }}><p className="pr-eyebrow" style={{ margin: "0 0 8px" }}>Accepted formats</p><p style={{ margin: 0, fontSize: "0.82rem" }}>Regular file: prayers, cross_references, optional chapter_intros and book_intro. Backfill file: format "pray-read-crossrefs-backfill-v1", book_number, book_name and cross_references. A missing translation or a cross-reference without words is reported as a warning, never as a block: the file is imported all the same.</p></div>
       {parseError ? <div className="pr-error" style={{ marginTop: 12 }}>{parseError}</div> : null}
     </div>
 
@@ -98,6 +100,7 @@ export default function PrayerCrossRefImport() {
       <h3 className="pr-heading" style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 10px" }}>{rows?.bookName || "Cross-reference backfill"} {rows?.bookNumber ? `(${rows.bookNumber})` : ""}</h3>
       <p style={{ margin: "0 0 12px", fontSize: "0.88rem" }}>{prayerRows.length} prayers, {crossRows.length} cross-references, {introRows.length} chapter introductions, {rows?.bookIntro && (rows.bookIntro.intro_en || rows.bookIntro.intro_lu || rows.bookIntro.closing_prayer_en || rows.bookIntro.closing_prayer_lu) ? 1 : 0} book intro/closing prayer, {checked.coverage?.filter((item) => !item.ok).length || 0} prayers missing cross-reference minimum  -  {checked.ok ? "ready to import" : "import blocked"}.</p>
       {checked.errors.length ? <div className="pr-error" style={{ marginBottom: 14 }}><strong>Import blocked  -  fix all listed problems first.</strong><ul className="pr-list-reset" style={{ display: "grid", gap: 5, marginTop: 8 }}>{checked.errors.map((message, index) => <li key={index} style={{ fontSize: "0.83rem" }}>{message}</li>)}</ul></div> : null}
+      {checked.warnings?.length ? <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, border: "1px solid var(--pr-gold)", background: "var(--pr-ivory-soft)" }}><p className="pr-eyebrow" style={{ margin: "0 0 8px", display: "flex", gap: 6, alignItems: "center" }}><AlertTriangleIcon className="h-4 w-4" style={{ color: "var(--pr-gold-deep)" }} /> Worth a look</p><ul className="pr-list-reset" style={{ display: "grid", gap: 6, fontSize: "0.83rem" }}>{checked.warnings.map((message, index) => <li key={index}>{message}</li>)}</ul></div> : null}
       {checked.coverage?.some((item) => !item.ok) ? <button type="button" className="pr-btn pr-btn-outline pr-btn-sm" onClick={() => downloadJson(missingCrossRefsTemplateText(checked), "Missing-Cross-Refs-Template.json")}><DownloadIcon className="h-4 w-4" /> Download Missing Cross-Refs Template</button> : null}
       {prayerRows.length ? <div style={{ margin: "14px 0 18px", overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", minWidth: 680 }}><thead><tr>{["Book", "Chapter", "Verse", "Prayer title", "Cross-refs in file", "Status"].map((name) => <th key={name} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--pr-border)" }}>{name}</th>)}</tr></thead><tbody>{prayerRows.map((row, index) => { const coverage = checked.coverage?.[index]; const count = coverage?.count ?? crossRefsFor.get(`${row.chapter}:${row.verse}`) ?? 0; return <tr key={index}><td style={{ padding: "6px 8px" }}>{row.book_name || bookNameFor(row.book_number)}</td><td style={{ padding: "6px 8px" }}>{row.chapter}</td><td style={{ padding: "6px 8px" }}>{verseLabel(row.verse, row.verse_end)}</td><td style={{ padding: "6px 8px" }}>{truncate(row.title_en || row.title_lu || "Untitled", 50)}</td><td style={{ padding: "6px 8px" }}>{count}</td><td style={{ padding: "6px 8px", color: coverage?.ok ? "var(--pr-emerald)" : "#9f2d2d" }}>{coverage?.ok ? "✓ OK" : "✕ MISSING"}</td></tr>; })}</tbody></table></div> : null}
       {rows?.bookIntro ? <div className="pr-success" style={{ margin: "12px 0" }}>Book introduction and/or book closing prayer: included when supplied.</div> : null}

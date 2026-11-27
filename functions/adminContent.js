@@ -81,6 +81,18 @@ const asNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/**
+ * A number, or nothing at all when the field is empty.
+ *
+ * The prayer that closes a chapter has no verse of its own, and it keeps
+ * that "no verse" instead of being given a zero.
+ */
+const asNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 /** Reads a yes or no answer, whatever way it was written. */
 const asBoolean = (value) => {
   if (typeof value === "boolean") return value;
@@ -100,16 +112,30 @@ const normaliseRefs = (value) => {
     .join(", ");
 };
 
+/**
+ * Reads the fields of a row.
+ *
+ * A field that the file carries is always written, even when it is empty,
+ * so a re-import can clear a field that the owner took out of the file.
+ * When the file carries the same field twice, the one with words in it is
+ * the one that is kept.
+ */
 const pickPresent = (row, aliases) => {
   const values = {};
   for (const [key, names] of Object.entries(aliases)) {
+    let empty;
     for (const name of names) {
       const value = row[name];
-      if (value !== undefined && value !== null && value !== "") {
-        values[key] = value;
-        break;
+      if (value === undefined) continue;
+      if (value === null || value === "") {
+        if (empty === undefined) empty = value;
+        continue;
       }
+      values[key] = value;
+      empty = undefined;
+      break;
     }
+    if (values[key] === undefined && empty !== undefined) values[key] = empty;
   }
   return values;
 };
@@ -263,11 +289,15 @@ const IMPORT_PLANS = {
   PrayerPassage: {
     entity: "PrayerPassage",
     bookScoped: true,
+    // The natural key is the place the prayer sits: the book, the chapter,
+    // the verse and the verse the run ends at. It is the same key the
+    // reader side uses, so a book that is imported through either admin
+    // tab is updated instead of being written twice.
     key: (row) =>
-      `passage:${asNumber(row.book_number)}:${asNumber(row.chapter)}:${asNumber(row.verse)}:${asNumber(
+      `${asNumber(row.book_number)}:${asNumber(row.chapter)}:${asNumber(row.verse)}:${asNumber(
         row.verse_end
       )}`,
-    required: ["book_number", "chapter", "prayer_en"],
+    required: ["book_number", "chapter"],
     aliases: {
       book_number: ["book_number", "bookNumber"],
       book_name: ["book_name", "bookName", "book"],
@@ -284,15 +314,17 @@ const IMPORT_PLANS = {
     normalise: {
       book_number: asNumber,
       chapter: asNumber,
-      verse: asNumber,
-      verse_end: asNumber
+      verse: asNumberOrNull,
+      verse_end: asNumberOrNull
     }
   },
   CrossReference: {
     entity: "CrossReference",
     bookScoped: true,
+    // The natural key is the verse the reference hangs on and the verse it
+    // points at.
     key: (row) =>
-      `crossref:${asNumber(row.book_number)}:${asNumber(row.chapter)}:${asNumber(row.verse)}:${asNumber(
+      `${asNumber(row.book_number)}:${asNumber(row.chapter)}:${asNumber(row.verse)}:${asNumber(
         row.ref_book_number
       )}:${asNumber(row.ref_chapter)}:${asNumber(row.ref_verse)}`,
     required: ["book_number", "chapter", "verse", "ref_book_number", "ref_chapter", "ref_verse"],
@@ -323,7 +355,7 @@ const IMPORT_PLANS = {
   ChapterIntro: {
     entity: "ChapterIntro",
     bookScoped: true,
-    key: (row) => `intro:${asNumber(row.book_number)}:${asNumber(row.chapter)}`,
+    key: (row) => `${asNumber(row.book_number)}:${asNumber(row.chapter)}`,
     required: ["book_number", "chapter"],
     aliases: {
       book_number: ["book_number", "bookNumber"],
@@ -340,7 +372,7 @@ const IMPORT_PLANS = {
   BookIntro: {
     entity: "BookIntro",
     bookScoped: true,
-    key: (row) => `bookintro:${asNumber(row.book_number)}`,
+    key: (row) => `${asNumber(row.book_number)}`,
     required: ["book_number"],
     aliases: {
       book_number: ["book_number", "bookNumber"],
@@ -695,6 +727,9 @@ Deno.serve(async (req) => {
           { status: 400 }
         );
       }
+      // A backfill file only adds the cross-references that are missing:
+      // the ones that are already in the app are left as they are.
+      const backfillOnly = String(payload.mode || "") === "backfill";
       const summary = {};
       const errors = [];
       for (const [collection, rawRows] of entries) {
@@ -751,6 +786,10 @@ Deno.serve(async (req) => {
           try {
             const current = index.get(key);
             if (current) {
+              if (backfillOnly && collection === "CrossReference") {
+                skipped += 1;
+                continue;
+              }
               await fse2.entities[plan.entity].update(current.id, values);
               updated += 1;
             } else {
