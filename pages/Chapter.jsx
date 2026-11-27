@@ -569,8 +569,8 @@ export default function Chapter() {
     const list = [];
     const imported = (crossRefRows || []).map(normaliseCrossRef);
     const usableImported = imported.filter((row) => !row.unresolved && Number(row.ref_book_number) > 0 && Number(row.ref_chapter) > 0 && Number(row.ref_verse) > 0);
-    if (imported.length) {
-      imported.forEach((row) => list.push(row));
+    if (usableImported.length) {
+      usableImported.forEach((row) => list.push(row));
       return list;
     }
     const seen = new Set();

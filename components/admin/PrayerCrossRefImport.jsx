@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BIBLE_BOOKS } from "@/lib/bibleBooks";
-import { TEMPLATE_URL, bookNameFor, missingCrossRefsTemplateText, prepareImport, prayerTemplateText, readImportedContent } from "@/lib/prayerImport";
+import { TEMPLATE_URL, bookNameFor, importShapeOf, missingCrossRefsTemplateText, prepareImport, prayerTemplateText, readImportedContent } from "@/lib/prayerImport";
 import { callAdminData } from "@/lib/adminSession";
 import { AlertTriangleIcon, CheckCircleIcon, DownloadIcon, Link2Icon, Loader2Icon, ListIcon, UploadIcon } from "lucide-react";
 
@@ -47,7 +47,7 @@ export default function PrayerCrossRefImport() {
     setReport(null); setParseError("");
     let parsed;
     try { parsed = JSON.parse(raw); } catch (error) { setParseError(`The file is not valid JSON: ${error.message}`); setChecked(null); return; }
-    const result = prepareImport(parsed);
+      const result = prepareImport(parsed);
     setChecked(result);
     if (result.rows?.bookNumber) setBookNumber(result.rows.bookNumber);
     const first = result.rows?.prayers?.[0]?.chapter || result.rows?.chapterIntros?.[0]?.chapter;
@@ -57,10 +57,17 @@ export default function PrayerCrossRefImport() {
     if (!checked?.ok) return;
     setBusy(true); setReport(null);
     try {
-      const prepared = prepareImport(JSON.parse(raw));
+      const parsed = JSON.parse(raw);
+      if (!importShapeOf(parsed)) throw new Error("This file format is not supported by this import.");
+      const prepared = prepareImport(parsed);
       if (!prepared.ok) throw new Error(prepared.errors.join("\n"));
       const payload = { ...prepared.collections };
       if (prepared.rows?.backfillOnly) payload.mode = "backfill";
+      else {
+        payload.__prepared_prayer_file = true;
+        payload.__replacement_collections = prepared.rows.replacementCollections || [];
+        payload.__replacement_books = prepared.rows.bookNumber ? [prepared.rows.bookNumber] : [];
+      }
       const result = await callAdminData("bulkImportJson", { payload });
       setReport({ ...result, errors: result?.errors || [] });
       await queryClient.invalidateQueries({ queryKey: ["installedPassages"] });
@@ -103,6 +110,7 @@ export default function PrayerCrossRefImport() {
       {checked.warnings?.length ? <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, border: "1px solid var(--pr-gold)", background: "var(--pr-ivory-soft)" }}><p className="pr-eyebrow" style={{ margin: "0 0 8px", display: "flex", gap: 6, alignItems: "center" }}><AlertTriangleIcon className="h-4 w-4" style={{ color: "var(--pr-gold-deep)" }} /> Worth a look</p><ul className="pr-list-reset" style={{ display: "grid", gap: 6, fontSize: "0.83rem" }}>{checked.warnings.map((message, index) => <li key={index}>{message}</li>)}</ul></div> : null}
       {checked.coverage?.some((item) => !item.ok) ? <button type="button" className="pr-btn pr-btn-outline pr-btn-sm" onClick={() => downloadJson(missingCrossRefsTemplateText(checked), "Missing-Cross-Refs-Template.json")}><DownloadIcon className="h-4 w-4" /> Download Missing Cross-Refs Template</button> : null}
       {prayerRows.length ? <div style={{ margin: "14px 0 18px", overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", minWidth: 680 }}><thead><tr>{["Book", "Chapter", "Verse", "Prayer title", "Cross-refs in file", "Status"].map((name) => <th key={name} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--pr-border)" }}>{name}</th>)}</tr></thead><tbody>{prayerRows.map((row, index) => { const coverage = checked.coverage?.[index]; const count = coverage?.count ?? crossRefsFor.get(`${row.chapter}:${row.verse}`) ?? 0; return <tr key={index}><td style={{ padding: "6px 8px" }}>{row.book_name || bookNameFor(row.book_number)}</td><td style={{ padding: "6px 8px" }}>{row.chapter}</td><td style={{ padding: "6px 8px" }}>{verseLabel(row.verse, row.verse_end)}</td><td style={{ padding: "6px 8px" }}>{truncate(row.title_en || row.title_lu || "Untitled", 50)}</td><td style={{ padding: "6px 8px" }}>{count}</td><td style={{ padding: "6px 8px", color: coverage?.ok ? "var(--pr-emerald)" : "#9f2d2d" }}>{coverage?.ok ? "✓ OK" : "✕ MISSING"}</td></tr>; })}</tbody></table></div> : null}
+      {rows?.replacementCollections?.length ? <div className="pr-success" style={{ margin: "12px 0" }}>On save, only earlier imported rows for {rows.bookName} in {rows.replacementCollections.join(", ")} are replaced. Manual content and other books are kept.</div> : null}
       {rows?.bookIntro ? <div className="pr-success" style={{ margin: "12px 0" }}>Book introduction and/or book closing prayer: included when supplied.</div> : null}
       <button type="button" className="pr-btn pr-btn-primary" onClick={runImport} disabled={!checked.ok || busy || (!prayerRows.length && !crossRows.length && !introRows.length && !rows?.bookIntro)}>{busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <UploadIcon className="h-4 w-4" />}{busy ? "Importing…" : rows?.backfillOnly ? "Import cross-references only" : "Import this book"}</button>
       {report ? <div style={{ marginTop: 14 }}>{report.errors?.length ? <div className="pr-error">{report.errors.join("\n")}</div> : <div className="pr-success">Import complete. Cross-references: {report.summary?.CrossReference?.inserted || 0} new, {report.summary?.CrossReference?.updated || 0} updated.</div>}</div> : null}

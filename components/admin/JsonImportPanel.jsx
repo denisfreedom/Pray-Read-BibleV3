@@ -109,9 +109,9 @@ const preparePayload = (parsed) => {
       return { error: `The prayer and cross-reference file is blocked: ${first}` };
     }
     return {
-      collections: prepared.collections,
-      notes: [
-        ...(prepared.notes || []),
+            collections: prepared.collections,
+      notes: prepared.notes || [
+        prepared.rows.replacementCollections.length ? `Saving replaces only prior imported rows for ${prepared.rows.bookName} in: ${prepared.rows.replacementCollections.join(", ")}. Manual content and other books are kept.` : "",
         "The prayers of the file are imported as the prayer passages and the cross-references as the cross-references.",
         "A prayer that has no Luganda text yet is imported with its Luganda section empty, so you can write it later in the content manager."
       ],
@@ -430,6 +430,17 @@ export default function JsonImportPanel() {
           </div>
         ) : null}
 
+        {result && result.summary ? (
+          <div style={{ marginTop: 16 }}>
+            <ul className="pr-list-reset" style={{ display: "grid", gap: 6 }}>
+              {Object.entries(result.summary).filter(([, stats]) => stats.cleanupSkipped || stats.deleted || stats.skippedDelete).map(([collection, stats]) => (
+                <li key={`cleanup-${collection}`} style={{ fontSize: "0.82rem", color: stats.cleanupSkipped ? "#9f2d2d" : "#5b6472" }}>
+                  {collection} cleanup: {stats.cleanupSkipped ? `skipped. ${stats.cleanupReason || "See the import errors below."}` : `${stats.deleted || 0} stale imported rows deleted.`} Skipped-delete count: {stats.skippedDelete === null || stats.skippedDelete === undefined ? "unknown" : stats.skippedDelete}.
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {result && result.errors && result.errors.length ? (
           <div style={{ marginTop: 16 }}>
             <h3

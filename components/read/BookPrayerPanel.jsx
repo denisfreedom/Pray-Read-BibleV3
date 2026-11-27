@@ -28,7 +28,7 @@ export default function BookPrayerPanel({
     queryKey: ["bookIntro", book.number],
     queryFn: () => fetchBookIntro(book.number)
   });
-  const hasImportedPrayer = Boolean(imported?.closing_prayer_en || imported?.closing_prayer_lu);
+  const hasImportedPrayer = Boolean(imported && (imported.closing_prayer_en || imported.closing_prayer_lu));
   const importedPrayer = hasImportedPrayer
     ? {
         title: imported.title_en || imported.title_lu || `Closing prayer for ${book.name}`,
@@ -49,7 +49,7 @@ export default function BookPrayerPanel({
     queryFn: () => fetchPublicCollection("prayers")
   });
 
-  const rows = library && library.length ? library : PRAYERS;
+  const rows = library && library.length ? library : (hasImportedPrayer ? [] : PRAYERS);
   const bookPrayers = rows.filter((row) => {
     const reference = parseReference(row.scripture_ref);
     return reference && reference.bookNumber === book.number;

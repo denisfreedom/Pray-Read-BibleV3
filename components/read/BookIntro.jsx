@@ -37,7 +37,7 @@ export default function BookIntro({
   });
   const importedIntro = imported ? (language === "lu" ? imported.intro_lu || "" : imported.intro_en || "") : "";
   const intro = imported ? importedIntro : (language === "lu" ? "" : guide.intro);
-  const title = imported?.title_en || imported?.title_lu || "";
+  const title = imported ? (language === "lu" ? imported.title_lu || "" : imported.title_en || "") : "";
 
   const openReference = (label, event) => {
     if (selectionInside(event.currentTarget)) return;
@@ -71,7 +71,7 @@ export default function BookIntro({
         className="pr-sel-paragraph"
       />
 
-      {!importedIntro ? <AnnotatedText
+      {!imported ? <AnnotatedText
         as="p"
         blockId="intro-soft"
         section="intro"
