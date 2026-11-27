@@ -18,6 +18,7 @@ import PrayerCrossRefImport from "@/components/admin/PrayerCrossRefImport";
 import CollectionsPanel from "@/components/admin/CollectionsPanel";
 import VerseSongsPanel from "@/components/admin/VerseSongsPanel";
 import QaPanel from "@/components/admin/QaPanel";
+import DevotionalsPanel from "@/components/admin/DevotionalsPanel";
 import PassagesPanel from "@/components/admin/PassagesPanel";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon, HeartHandshakeIcon, ListIcon } from "lucide-react";
@@ -45,14 +46,19 @@ const SECTIONS = [
 const FIELDS = {
   Devotional: [
     ["code", "Code", "text"],
-    ["title", "Title", "text"],
+    ["title_en", "Title (EN)", "text"],
     ["title_lu", "Title (Luganda)", "text"],
-    ["scripture", "Scripture", "text"],
-    ["body", "Body (EN)", "textarea"],
+    ["scripture_ref", "Scripture", "text"],
+    ["verse_en", "Verse (EN)", "textarea"],
+    ["verse_lu", "Verse (LU)", "textarea"],
+    ["body_en", "Body (EN)", "textarea"],
     ["body_lu", "Body (LU)", "textarea"],
-    ["related", "Related scriptures", "text"],
-    ["further_readings", "Further readings", "text"],
-    ["cover_image", "Cover image URL", "text"]
+    ["prayer_en", "Prayer (EN)", "textarea"],
+    ["prayer_lu", "Prayer (LU)", "textarea"],
+    ["topic", "Topic", "text"],
+    ["series", "Series", "text"],
+    ["date", "Date", "text"],
+    ["cover_url", "Cover image URL", "text"]
   ],
   Prayer: [
     ["title", "Title", "text"],
@@ -403,6 +409,8 @@ export default function AdminDashboard() {
 
           {section === "prayers" ? <PrayersPanel mode="library" /> : null}
 
+          {section === "devotionals" ? <DevotionalsPanel /> : null}
+
           {section === "passages" ? <PassagesPanel /> : null}
 
           {section === "import" ? (
@@ -567,7 +575,7 @@ export default function AdminDashboard() {
             </div>
           ) : null}
 
-          {entity && fields && section !== "songs" && section !== "qa" ? (
+          {entity && fields && section !== "songs" && section !== "qa" && section !== "devotionals" ? (
             <div className="pr-card pr-card-pad">
               <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <h2 className="pr-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, textTransform: "capitalize" }}>

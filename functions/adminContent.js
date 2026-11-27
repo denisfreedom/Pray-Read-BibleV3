@@ -35,6 +35,9 @@ const sign = async (payload, secret) => {
 
 const MANAGED = [
   "Devotional",
+  "DevotionalTopic",
+  "DevotionalPlan",
+  "DevotionalSaved",
   "Prayer",
   "PrayerPassage",
   "CrossReference",
@@ -133,6 +136,55 @@ const QA_ITEM_PLAN = {
   normalise: { featured: asBoolean, active: asBoolean }
 };
 
+// The devotionals of the library.
+//
+// The file follows the format pray-read-devotionals-v1: every row holds the
+// two languages of the title, of the verse, of the body and of the prayer,
+// the scripture, the topic, the series and the date. The same file can be
+// uploaded again: a row whose title and date are already in the library is
+// updated, never added a second time.
+const DEVOTIONAL_PLAN = {
+  entity: "Devotional",
+  key: (row) =>
+    `devotional:${asText(row.title_en || row.title).toLowerCase()}:${asText(
+      row.date || row.publish_date
+    )
+      .slice(0, 10)}`,
+  required: [
+    "title_en",
+    "title_lu",
+    "verse_en",
+    "verse_lu",
+    "body_en",
+    "body_lu",
+    "prayer_en",
+    "prayer_lu",
+    "scripture_ref",
+    "date"
+  ],
+  aliases: {
+    code: ["code"],
+    title_en: ["title_en", "titleEn", "title"],
+    title_lu: ["title_lu", "titleLu"],
+    scripture_ref: ["scripture_ref", "scriptureRef", "scripture", "passage", "reference"],
+    scripture_lu: ["scripture_lu", "scriptureLu"],
+    verse_en: ["verse_en", "verseEn", "verse"],
+    verse_lu: ["verse_lu", "verseLu"],
+    body_en: ["body_en", "bodyEn", "body"],
+    body_lu: ["body_lu", "bodyLu"],
+    prayer_en: ["prayer_en", "prayerEn", "prayer"],
+    prayer_lu: ["prayer_lu", "prayerLu"],
+    topic: ["topic", "category"],
+    series: ["series", "plan"],
+    date: ["date", "publish_date", "publishDate"],
+    cover_url: ["cover_url", "coverUrl", "cover", "cover_image"],
+    day: ["day"],
+    featured: ["featured"],
+    active: ["active"]
+  },
+  normalise: { day: asNumber, featured: asBoolean, active: asBoolean }
+};
+
 const IMPORT_PLANS = {
   Prayer: {
     entity: "Prayer",
@@ -149,27 +201,8 @@ const IMPORT_PLANS = {
     },
     normalise: { cross_refs: normaliseRefs }
   },
-  Devotional: {
-    entity: "Devotional",
-    key: (row) => `code:${asText(row.code).toLowerCase()}`,
-    required: ["code"],
-    aliases: {
-      code: ["code"],
-      title: ["title"],
-      title_lu: ["title_lu", "titleLu"],
-      scripture: ["scripture"],
-      scripture_lu: ["scripture_lu", "scriptureLu"],
-      body: ["body", "body_en", "bodyEn"],
-      body_lu: ["body_lu", "bodyLu"],
-      related: ["related"],
-      further_readings: ["further_readings", "furtherReadings"],
-      cover_image: ["cover_image", "coverImage"],
-      publish_date: ["publish_date", "publishDate"],
-      day: ["day"],
-      category: ["category"]
-    },
-    normalise: { day: asNumber }
-  },
+  Devotional: DEVOTIONAL_PLAN,
+  devotionals: DEVOTIONAL_PLAN,
   BibleVerse: {
     entity: "BibleVerse",
     key: (row) => `verse:${asText(row.book_number)}:${asText(row.chapter)}:${asText(row.verse)}`,
@@ -418,6 +451,43 @@ const logActivity = async (account, action, section, detail) => {
   });
 };
 
+// The fields a devotional must carry, in both languages. The errors name the
+// language, so the content manager sees at once what is missing.
+const DEVOTIONAL_REQUIRED = [
+  ["title_en", "Title (English)"],
+  ["title_lu", "Title (Luganda)"],
+  ["scripture_ref", "Scripture reference"],
+  ["verse_en", "Verse text (English)"],
+  ["verse_lu", "Verse text (Luganda)"],
+  ["body_en", "Body (English)"],
+  ["body_lu", "Body (Luganda)"],
+  ["prayer_en", "Prayer (English)"],
+  ["prayer_lu", "Prayer (Luganda)"],
+  ["topic", "Topic"],
+  ["date", "Date"]
+];
+
+// One field of a devotional, in the name of the specification. The names the
+// first records were written with are still read, so an old record that was
+// never migrated still passes.
+const devotionalField = (row, key) => {
+  if (!row) return "";
+  const value = asText(row[key]);
+  if (value) return value;
+  if (key === "title_en") return asText(row.title);
+  if (key === "body_en") return asText(row.body);
+  if (key === "scripture_ref") return asText(row.scripture);
+  if (key === "topic") return asText(row.category);
+  if (key === "date") return asText(row.publish_date).slice(0, 10);
+  if (key === "cover_url") return asText(row.cover_image);
+  return "";
+};
+
+const devotionalErrors = (row) =>
+  DEVOTIONAL_REQUIRED.filter(([key]) => !devotionalField(row, key)).map(
+    ([, label]) => `${label} is required`
+  );
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -489,6 +559,12 @@ Deno.serve(async (req) => {
       if (!MANAGED.includes(entity)) {
         return Response.json({ error: "That collection cannot be managed here." }, { status: 400 });
       }
+      if (entity === "Devotional") {
+        const errors = devotionalErrors(body.values || {});
+        if (errors.length) {
+          return Response.json({ error: errors.join(". "), errors }, { status: 400 });
+        }
+      }
       const record = await fse2.entities[entity].create(body.values || {});
       await logActivity(account, "created a record", entity, body.values?.title || body.values?.name || "");
       return Response.json({ record });
@@ -498,6 +574,22 @@ Deno.serve(async (req) => {
       const entity = String(body.entity || "");
       if (!MANAGED.includes(entity)) {
         return Response.json({ error: "That collection cannot be managed here." }, { status: 400 });
+      }
+      if (entity === "Devotional") {
+        const values = body.values || {};
+        // A change that only shows or hides a devotional leaves the text
+        // alone, so it is never blocked. A change that writes the text is
+        // checked against the whole record.
+        const touchesContent = DEVOTIONAL_REQUIRED.some(([key]) => key in values);
+        if (touchesContent) {
+          const rows =
+            (await fse2.entities.Devotional.list("-updated_date", 1000).catch(() => [])) || [];
+          const current = rows.find((row) => String(row.id) === String(body.id || ""));
+          const errors = devotionalErrors({ ...(current || {}), ...values });
+          if (errors.length) {
+            return Response.json({ error: errors.join(". "), errors }, { status: 400 });
+          }
+        }
       }
       const record = await fse2.entities[entity].update(String(body.id || ""), body.values || {});
       await logActivity(account, "updated a record", entity, body.values?.title || body.values?.name || "");
@@ -566,17 +658,17 @@ Deno.serve(async (req) => {
           // format is still accepted so past imports keep working.
           const values = lines.length >= 7
             ? {
-                title: lines[0] || "",
+                title_en: lines[0] || "",
                 title_lu: lines[1] || "",
-                scripture: lines[2] || "",
+                scripture_ref: lines[2] || "",
                 scripture_lu: lines[3] || "",
-                body: lines[4] || "",
+                body_en: lines[4] || "",
                 body_lu: lines[5] || ""
               }
             : {
-                title: lines[0] || "",
-                scripture: lines[1] || "",
-                body: lines[2] || "",
+                title_en: lines[0] || "",
+                scripture_ref: lines[1] || "",
+                body_en: lines[2] || "",
                 body_lu: lines[3] || ""
               };
           try {

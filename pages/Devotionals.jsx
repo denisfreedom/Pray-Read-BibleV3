@@ -1,397 +1,422 @@
-import React from "react";
-import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import React, { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchPublicCollection } from "@/lib/contentApi";
-import { useAuth } from "@/lib/AuthContext";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import { DEVOTIONALS } from "@/lib/seedContent";
-import { chapterLink } from "@/lib/scriptureRefs";
-import { formatLugandaDevotional, formatEnglishDevotional } from "@/lib/luganda";
-import { devotionalShareText } from "@/lib/share";
-import { STORAGE_KEYS, DEFAULT_COVER } from "@/lib/theme";
-import { toISODate } from "@/lib/reading";
-import Modal from "@/components/common/Modal";
-import ShareRow from "@/components/common/ShareRow";
-import { BookOpenIcon, CalendarIcon, FlameIcon, CheckCircleIcon, ListIcon } from "lucide-react";
-import { fse2 } from "@/api/fse2Client";
+import { HERO_IMAGE } from "@/lib/theme";
+import { shiftISODate, toISODate } from "@/lib/reading";
+import { fullShareChannels } from "@/lib/share";
+import {
+  bodyOf,
+  buildDevotionalShareText,
+  coverOf,
+  devotionalDate,
+  devotionalKey,
+  devotionalUrl,
+  excerptOf,
+  longDateLabel,
+  mergeWithBundledText,
+  pickDailyDevotional,
+  rememberDaily,
+  scriptureOf,
+  sortDevotionals,
+  titleOf,
+  topicOf,
+  visibleDevotionals
+} from "@/lib/devotionals";
+import useDevotionalLibrary from "@/lib/useDevotionalLibrary";
+import DevotionalFilters from "@/components/devotional/DevotionalFilters";
+import DevotionalCard from "@/components/devotional/DevotionalCard";
+import DevotionalFeatured from "@/components/devotional/DevotionalFeatured";
+import DevotionalFullView from "@/components/devotional/DevotionalFullView";
+import ShareSheet from "@/components/read/ShareSheet";
+import { ArrowLeftIcon, Loader2Icon } from "lucide-react";
 
+const PAGE_SIZE = 12;
 
-const readDone = () => {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.doneDevotionals) || "[]");
-  } catch {
-    return [];
-  }
+const daysAgo = (iso, days) => {
+  if (!iso) return false;
+  const from = shiftISODate(toISODate(), -days);
+  return iso >= from && iso <= toISODate();
 };
 
+const matchesSearch = (row, term) => {
+  if (!term) return true;
+  const needle = term.toLowerCase();
+  return [
+    row.title_en,
+    row.title_lu,
+    row.verse_en,
+    row.verse_lu,
+    row.body_en,
+    row.body_lu,
+    row.topic,
+    row.scripture_ref
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(needle));
+};
+
+/**
+ * The devotional page.
+ *
+ * The devotional of the day is at the top, the previous days follow, and
+ * the whole library is below with the filters of the reader: the language,
+ * the search, the topic and the date.
+ */
 export default function Devotionals() {
-  const { isAuthenticated, user } = useAuth();
-  const queryClient = useQueryClient();
-  const params = new URLSearchParams(window.location.search);
-  const requested = params.get("devotional");
-  const [view, setView] = useState("list");
+  const today = toISODate();
+  const [language, setLanguage] = useState("BOTH");
   const [search, setSearch] = useState("");
-  const [openCode, setOpenCode] = useState(requested || null);
-  const [done, setDone] = useState(readDone());
-  const [toast, setToast] = useState("");
+  const [topic, setTopic] = useState("");
+  const [range, setRange] = useState("all");
+  const [series, setSeries] = useState("");
+  const [openKey, setOpenKey] = useState("");
+  const [shareRow, setShareRow] = useState(null);
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
-  const { data: rows } = useQuery({
+  const { data: dbRows, isLoading } = useQuery({
     queryKey: ["devotionals"],
-    queryFn: () => fetchPublicCollection("devotionals", { authenticated: isAuthenticated })
+    queryFn: () => fetchPublicCollection("devotionals")
   });
 
-  const email = user?.email || null;
-
-  const { data: progressRows } = useQuery({
-    queryKey: ["devotionalProgress", email],
-    queryFn: () => fse2.entities.DevotionalProgress.list("-completed_date", 300),
-    enabled: !!email
+  const { data: dbTopics } = useQuery({
+    queryKey: ["devotionalTopics"],
+    queryFn: () => fetchPublicCollection("devotionalTopics")
   });
 
-  // Completions saved on another device are merged into this device.
-  useEffect(() => {
-    if (!email || !progressRows) return;
-    const serverCodes = (progressRows || [])
-      .filter((row) => row.owner_email === email && row.devotional_code)
-      .map((row) => row.devotional_code);
-    if (!serverCodes.length) return;
-    setDone((current) => {
-      const merged = Array.from(new Set([...current, ...serverCodes]));
-      if (merged.length === current.length) return current;
-      localStorage.setItem(STORAGE_KEYS.doneDevotionals, JSON.stringify(merged));
-      return merged;
-    });
-  }, [progressRows, email]);
+  const rows = useMemo(() => {
+    const list = Array.isArray(dbRows) && dbRows.length ? dbRows : DEVOTIONALS;
+    return sortDevotionals(mergeWithBundledText(list));
+  }, [dbRows]);
 
-  const devotionals = useMemo(() => {
-    if (rows && rows.length) return rows;
-    return DEVOTIONALS.map((item) => ({ ...item, publish_date: "", day: item.code }));
+  const topics = useMemo(() => {
+    const list = (Array.isArray(dbTopics) ? dbTopics : []).filter((item) => item.active !== false);
+    if (list.length) {
+      return list.map((item) => ({
+        id: item.id,
+        name_en: item.name_en,
+        name_lu: item.name_lu,
+        active: true
+      }));
+    }
+    // Until the content manager writes the topics, the ones the devotionals
+    // carry themselves are used, so the filter is never empty.
+    const names = [...new Set(rows.map(topicOf).filter(Boolean))].sort();
+    return names.map((name, index) => ({
+      id: `topic-${index}`,
+      name_en: name,
+      name_lu: "",
+      active: true
+    }));
+  }, [dbTopics, rows]);
+
+  const seriesOptions = useMemo(() => {
+    const names = rows.map((row) => String(row.series || "").trim()).filter(Boolean);
+    return [...new Set(names)].sort();
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return devotionals;
-    return devotionals.filter(
-      (item) =>
-        String(item.title || "").toLowerCase().includes(query) ||
-        String(item.code || "").toLowerCase().includes(query) ||
-        String(item.title_lu || "").toLowerCase().includes(query)
-    );
-  }, [devotionals, search]);
+  const daily = useMemo(
+    () => pickDailyDevotional(rows, today, shiftISODate(today, -1)),
+    [rows, today]
+  );
 
-  const current = devotionals.find((item) => item.code === openCode) || null;
-  const streak = done.length;
+  useEffect(() => {
+    if (daily) rememberDaily(today, devotionalKey(daily));
+  }, [daily, today]);
 
-  const markComplete = async (code) => {
-    if (done.includes(code)) return;
-    const next = [...done, code];
-    setDone(next);
-    localStorage.setItem(STORAGE_KEYS.doneDevotionals, JSON.stringify(next));
-    if (email) {
-      try {
-        await fse2.entities.DevotionalProgress.create({
-          owner_email: email,
-          devotional_code: code,
-          completed_date: toISODate()
-        });
-        await queryClient.invalidateQueries({ queryKey: ["devotionalProgress", email] });
-        setToast("Marked as complete and saved to your account");
-      } catch {
-        setToast("Marked as complete on this device");
+  // A devotional that is pasted as a link opens straight away.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wanted = params.get("devotional");
+    if (!wanted) return;
+    const match = rows.find((row) => devotionalKey(row) === wanted);
+    if (match) setOpenKey(devotionalKey(match));
+  }, [rows]);
+
+  const library = useDevotionalLibrary();
+
+  const shown = useMemo(() => {
+    const published = visibleDevotionals(rows, today);
+    return published.filter((row) => {
+      if (!matchesSearch(row, search.trim())) return false;
+      if (topic && topicOf(row) !== topic) return false;
+      if (series && String(row.series || "") !== series) return false;
+      const date = devotionalDate(row);
+      if (range === "today" && date !== today) return false;
+      if (range === "week" && !daysAgo(date, 6)) return false;
+      if (range === "month" && !daysAgo(date, 29)) return false;
+      return true;
+    });
+  }, [rows, today, search, topic, series, range]);
+
+  const previousDays = useMemo(() => {
+    const published = visibleDevotionals(rows, today);
+    const older = published.filter((row) => devotionalDate(row) && devotionalDate(row) < today);
+    return older.slice(0, 3);
+  }, [rows, today]);
+
+  const openRow = useMemo(
+    () => rows.find((row) => devotionalKey(row) === openKey) || null,
+    [rows, openKey]
+  );
+
+  const neighbours = useMemo(() => {
+    if (!openRow) return { prev: null, next: null };
+    const index = shown.findIndex((row) => devotionalKey(row) === devotionalKey(openRow));
+    const source = index >= 0 ? shown : visibleDevotionals(rows, today);
+    const at = source.findIndex((row) => devotionalKey(row) === devotionalKey(openRow));
+    if (at < 0) return { prev: null, next: null };
+    // The list runs from the newest day to the oldest, so the day after is
+    // the one above and the day before the one below.
+    const before = source.slice(0, at);
+    const after = source.slice(at + 1);
+    return {
+      next: before.length ? before.pop() : null,
+      prev: after.length ? after.shift() : null
+    };
+  }, [openRow, shown, rows, today]);
+
+  const shareUrl = shareRow ? devotionalUrl(shareRow) : "";
+  const shareText = shareRow ? buildDevotionalShareText(shareRow, shareUrl, language) : "";
+
+  // The social preview of the devotional that is open.
+  useEffect(() => {
+    if (!openRow) return undefined;
+    const title = `${titleOf(openRow, "EN")}  -  Pray-Read Devotional`;
+    const description = excerptOf(bodyOf(openRow, "EN"), 1);
+    document.title = title;
+    const setMeta = (attribute, name, content) => {
+      const selector = "meta[" + attribute + "='" + name + "']";
+      let tag = document.querySelector(selector);
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(attribute, name);
+        document.head.appendChild(tag);
       }
-    } else {
-      setToast("Marked as complete");
-    }
-    window.setTimeout(() => setToast(""), 2000);
+      tag.setAttribute("content", content);
+    };
+    setMeta("property", "og:title", title);
+    setMeta("property", "og:description", description);
+    setMeta("property", "og:image", coverOf(openRow));
+    setMeta("property", "og:url", devotionalUrl(openRow));
+    setMeta("name", "description", description);
+    return undefined;
+  }, [openRow]);
+
+  const openDevotional = (row) => {
+    if (!row) return;
+    setOpenKey(devotionalKey(row));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const english = current ? formatEnglishDevotional(current.body) : null;
-  const luganda = current ? formatLugandaDevotional(current.body_lu) : null;
+  const backToList = () => {
+    setOpenKey("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  const shareUrl = current
-    ? `${window.location.origin}${createPageUrl("Devotionals")}?devotional=${current.code}`
-    : window.location.origin;
+  if (openRow) {
+    return (
+      <div className="pr-page">
+        <main className="pr-main">
+          <section className="pr-section-tight">
+            <div className="pr-container">
+              <button type="button" className="pr-btn pr-btn-outline pr-btn-sm" onClick={backToList}>
+                <ArrowLeftIcon className="h-4 w-4" /> All devotionals
+              </button>
+              <div style={{ marginTop: 18 }}>
+                <DevotionalFullView
+                  row={openRow}
+                  language={language}
+                  onBack={(row) => (row ? openDevotional(row) : backToList())}
+                  onShare={(row) => setShareRow(row)}
+                  prev={neighbours.prev}
+                  next={neighbours.next}
+                  saved={library.isSaved(openRow)}
+                  onToggleSave={library.toggleSave}
+                  read={library.isRead(openRow)}
+                  onMarkRead={library.markRead}
+                  more={shown
+                    .filter((row) => devotionalKey(row) !== devotionalKey(openRow))
+                    .slice(0, 3)}
+                />
+              </div>
+            </div>
+          </section>
+        </main>
 
-  const shareText = current
-    ? devotionalShareText(
-        {
-          title: current.title,
-          reference: current.scripture,
-          body: current.body,
-          related: current.related || current.scripture,
-          furtherReadings: current.further_readings || "Psalm 23; John 1"
-        },
-        shareUrl
-      )
-    : "";
+        <ShareSheet
+          open={!!shareRow}
+          onClose={() => setShareRow(null)}
+          title="Share this Devotional"
+          subtitle={shareRow ? titleOf(shareRow, language) : ""}
+          text={shareText}
+          url={shareUrl}
+          subject={shareRow ? titleOf(shareRow, language) : ""}
+          preview={
+            shareRow
+              ? {
+                  image: coverOf(shareRow),
+                  title: titleOf(shareRow, language),
+                  line: `${scriptureOf(shareRow, language)}  -  ${excerptOf(bodyOf(shareRow, language), 1)}`,
+                  link: shareUrl
+                }
+              : null
+          }
+          channels={fullShareChannels}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <section
-        className="pr-hero"
-        style={{ backgroundImage: `url(${DEFAULT_COVER})`, backgroundSize: "cover", backgroundPosition: "center" }}
-      >
-        <div className="pr-hero-overlay" />
-        <div className="pr-container pr-hero-inner">
-          <span className="pr-eyebrow pr-eyebrow-light">Daily Devotionals</span>
-          <h1 className="pr-hero-title">Short, rich devotionals to deepen your faith</h1>
-          <p className="pr-hero-text">
-            In English and Luganda, each devotional opens with a passage and ends with something to pray about
-            tonight.
-          </p>
-          <div className="pr-hero-actions">
-            <button
-              type="button"
-              className="pr-btn pr-btn-gold"
-              onClick={() => {
-                setView("list");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            >
-              Explore
-            </button>
-            <button
-              type="button"
-              className="pr-btn pr-btn-light-outline"
-              onClick={() => setView((value) => (value === "calendar" ? "list" : "calendar"))}
-            >
-              <CalendarIcon className="h-4 w-4" />
-              Calendar view
-            </button>
-            {streak > 0 ? (
-              <span
-                className="pr-chip"
-                style={{ background: "rgba(233,201,129,0.18)", color: "#f6e3b6", borderColor: "rgba(233,201,129,0.4)" }}
-              >
-                <FlameIcon className="h-4 w-4" /> Your streak: {streak} devotional
-                {streak === 1 ? "" : "s"} completed
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      <div className="pr-container pr-section">
-        <div className="pr-card pr-card-pad" style={{ marginBottom: 24 }}>
-          <label htmlFor="devotional-search" className="pr-label">
-            Search by title or code
-          </label>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              id="devotional-search"
-              className="pr-input"
-              style={{ flex: "1 1 260px" }}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search devotionals… e.g. Psalms, D-001"
-            />
-            <div className="pr-tabs" style={{ borderBottom: "none" }}>
-              <button
-                type="button"
-                className={`pr-tab ${view === "list" ? "pr-tab-active" : ""}`}
-                onClick={() => setView("list")}
-              >
-                <ListIcon className="h-4 w-4" style={{ display: "inline" }} /> List
-              </button>
-              <button
-                type="button"
-                className={`pr-tab ${view === "calendar" ? "pr-tab-active" : ""}`}
-                onClick={() => setView("calendar")}
-              >
-                <CalendarIcon className="h-4 w-4" style={{ display: "inline" }} /> Calendar
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="pr-empty">
-            <p style={{ margin: 0, fontWeight: 700 }}>No devotional matches “{search}”.</p>
-            <p style={{ margin: "8px 0 0", fontSize: "0.88rem" }}>Try the code, such as D-001.</p>
-          </div>
-        ) : view === "calendar" ? (
-          <div className="pr-grid pr-grid-3">
-            {filtered.map((item, index) => (
-              <button
-                key={item.code}
-                type="button"
-                className="pr-card pr-card-hover pr-card-pad"
-                style={{ textAlign: "left", cursor: "pointer", borderTop: "4px solid var(--pr-gold)" }}
-                onClick={() => setOpenCode(item.code)}
-              >
-                <span className="pr-badge pr-badge-gold">Day {index + 1}</span>
-                <p className="pr-heading" style={{ margin: "10px 0 0", fontWeight: 800 }}>
-                  {item.title}
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--pr-gold-deep)", fontWeight: 700 }}>
-                  {item.scripture}
-                </p>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="pr-grid pr-grid-2">
-            {filtered.map((item) => (
-              <div key={item.code} className="pr-card pr-card-hover" style={{ overflow: "hidden" }}>
-                <img
-                  src={item.cover_image || DEFAULT_COVER}
-                  alt=""
-                  style={{ width: "100%", height: 170, objectFit: "cover", display: "block" }}
-                />
-                <div className="pr-card-pad">
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <span className="pr-badge pr-badge-gold">{item.code}</span>
-                    {done.includes(item.code) ? (
-                      <span className="pr-badge pr-badge-emerald">
-                        <CheckCircleIcon className="h-3 w-3" /> Completed
-                      </span>
-                    ) : null}
-                  </div>
-                  <h2 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.2rem", fontWeight: 800 }}>
-                    {item.title}
-                  </h2>
-                  <p className="pr-serif" style={{ margin: "6px 0 0", color: "var(--pr-gold-deep)", fontWeight: 700 }}>
-                    {item.scripture}
-                  </p>
-                  <p style={{ margin: "10px 0 0", fontSize: "0.9rem" }}>
-                    {String(item.body || "").split("\n\n")[0]}
-                  </p>
-                  <button
-                    type="button"
-                    className="pr-btn pr-btn-primary pr-btn-sm"
-                    style={{ marginTop: 14 }}
-                    onClick={() => setOpenCode(item.code)}
-                  >
-                    <BookOpenIcon className="h-4 w-4" /> Read
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <Modal
-        open={Boolean(current)}
-        onClose={() => setOpenCode(null)}
-        title={current?.title || ""}
-        subtitle={current ? `${current.code} · ${current.scripture}` : ""}
-      >
-        {current ? (
-          <div>
-            <ShareRow text={shareText} url={shareUrl} />
-
-            <div className="pr-card" style={{ padding: 18, marginTop: 18, background: "var(--pr-ivory-soft)" }}>
-              <p className="pr-eyebrow">Scripture</p>
-              <p className="pr-serif" style={{ margin: "10px 0 0", fontSize: "1.1rem", lineHeight: 1.8, color: "var(--pr-heading)" }}>
-                {current.scripture_lu || current.scripture}
+    <div className="pr-page">
+      <main className="pr-main">
+        <section className="pr-dev-hero">
+          <div className="pr-dev-hero-bg" style={{ backgroundImage: `url(${HERO_IMAGE})` }} />
+          <div className="pr-dev-hero-inner">
+            <div className="pr-container">
+              <p className="pr-eyebrow pr-eyebrow-light">Pray · Read · Live the Word</p>
+              <h1 className="pr-dev-hero-title">Daily Devotionals</h1>
+              <p className="pr-dev-hero-sub">
+                A fresh word for today  -  read, pray, and share it.
               </p>
             </div>
-
-            <div className="pr-tabs" style={{ marginTop: 22 }}>
-              <button type="button" className="pr-tab pr-tab-active">English</button>
-              <button
-                type="button"
-                className="pr-tab"
-                onClick={(event) => {
-                  const parent = event.currentTarget.parentElement;
-                  const children = Array.from(parent.children);
-                  const index = children.indexOf(event.currentTarget);
-                  children.forEach((child, childIndex) => {
-                    child.className = childIndex === index ? "pr-tab pr-tab-active" : "pr-tab";
-                  });
-                  const panels = document.getElementById("devotional-language-panels");
-                  if (panels) {
-                    const panelChildren = Array.from(panels.children);
-                    panelChildren.forEach((child, childIndex) => {
-                      child.style.display = childIndex === index ? "block" : "none";
-                    });
-                  }
-                }}
-              >
-                Luganda
-              </button>
-            </div>
-
-            <div id="devotional-language-panels" style={{ marginTop: 18 }}>
-              <div>
-                {english.paragraphs.map((block, index) => (
-                  <p
-                    key={`en-${index}`}
-                    className="pr-serif"
-                    style={{
-                      margin: "0 0 14px",
-                      fontSize: "1.05rem",
-                      lineHeight: 1.85,
-                      color: "var(--pr-heading)",
-                      fontWeight: block.heading ? 700 : 400
-                    }}
-                  >
-                    {block.text}
-                  </p>
-                ))}
-              </div>
-
-              <div style={{ display: "none" }}>
-                {luganda.verse ? (
-                  <p className="pr-serif" style={{ margin: "0 0 14px", fontSize: "1.05rem", lineHeight: 1.85, color: "var(--pr-heading)" }}>
-                    {luganda.verse}
-                  </p>
-                ) : null}
-                {luganda.reflection ? (
-                  <>
-                    <p className="pr-eyebrow">Okufumiitiriza</p>
-                    <p className="pr-serif" style={{ margin: "8px 0 16px", fontSize: "1.02rem", lineHeight: 1.85, color: "var(--pr-heading)" }}>
-                      {luganda.reflection}
-                    </p>
-                  </>
-                ) : null}
-                {luganda.application ? (
-                  <>
-                    <p className="pr-eyebrow">Okukozesa mu Bulamu</p>
-                    <p className="pr-serif" style={{ margin: "8px 0 16px", fontSize: "1.02rem", lineHeight: 1.85, color: "var(--pr-heading)" }}>
-                      {luganda.application}
-                    </p>
-                  </>
-                ) : null}
-                {luganda.prayer ? (
-                  <>
-                    <p className="pr-eyebrow">Okuliriza</p>
-                    <p className="pr-serif" style={{ margin: "8px 0 16px", fontSize: "1.02rem", lineHeight: 1.85, color: "var(--pr-heading)" }}>
-                      {luganda.prayer}
-                    </p>
-                  </>
-                ) : null}
-                {luganda.paragraphs.map((block, index) => (
-                  <p key={`lu-${index}`} className="pr-serif" style={{ margin: "0 0 14px", fontSize: "1.02rem", lineHeight: 1.85, color: "var(--pr-heading)" }}>
-                    {block}
-                  </p>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
-              <button
-                type="button"
-                className={`pr-btn ${done.includes(current.code) ? "pr-btn-outline" : "pr-btn-gold"}`}
-                onClick={() => markComplete(current.code)}
-                disabled={done.includes(current.code)}
-              >
-                <CheckCircleIcon className="h-4 w-4" />
-                {done.includes(current.code) ? "Completed" : "Mark complete"}
-              </button>
-              {chapterLink(current.scripture) ? (
-                <Link to={chapterLink(current.scripture)} className="pr-btn pr-btn-outline">
-                  Read {current.scripture}
-                </Link>
-              ) : null}
-            </div>
           </div>
-        ) : null}
-      </Modal>
+        </section>
 
-      {toast ? <div className="pr-toast">{toast}</div> : null}
+        <section className="pr-section-tight">
+          <div className="pr-container">
+            {isLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+                <Loader2Icon className="h-8 w-8 animate-spin" style={{ color: "var(--pr-emerald)" }} />
+              </div>
+            ) : null}
+
+            {!isLoading && !rows.length ? (
+              <div className="pr-empty">
+                <h2 className="pr-dev-title">No devotionals yet  -  check back tomorrow.</h2>
+                <p style={{ marginTop: 8 }}>
+                  The first devotional of the day will appear here as soon as it is written.
+                </p>
+              </div>
+            ) : null}
+
+            {!isLoading && rows.length ? (
+              <>
+                <DevotionalFeatured
+                  row={daily}
+                  language={language}
+                  onOpen={openDevotional}
+                  onShare={(row) => setShareRow(row)}
+                  saved={daily ? library.isSaved(daily) : false}
+                  onToggleSave={library.toggleSave}
+                />
+
+                {previousDays.length ? (
+                  <div style={{ marginTop: 34 }}>
+                    <h2 className="pr-section-title" style={{ fontSize: "1.3rem" }}>
+                      Previous Days
+                    </h2>
+                    <div className="pr-dev-prev" style={{ marginTop: 14 }}>
+                      {previousDays.map((row) => (
+                        <button
+                          key={row.id || row.code}
+                          type="button"
+                          className="pr-dev-prev-card"
+                          style={{ textAlign: "left", cursor: "pointer" }}
+                          onClick={() => openDevotional(row)}
+                        >
+                          <img className="pr-dev-prev-cover" src={coverOf(row)} alt="" loading="lazy" />
+                          <span>
+                            <span className="pr-dev-date" style={{ display: "block" }}>
+                              {longDateLabel(devotionalDate(row))}
+                            </span>
+                            <strong style={{ color: "var(--pr-heading)" }}>{titleOf(row, language)}</strong>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <DevotionalFilters
+                  language={language}
+                  onLanguage={setLanguage}
+                  search={search}
+                  onSearch={(value) => {
+                    setSearch(value);
+                    setVisible(PAGE_SIZE);
+                  }}
+                  topics={topics.filter((item) => item.active)}
+                  topic={topic}
+                  onTopic={setTopic}
+                  range={range}
+                  onRange={setRange}
+                  series={series}
+                  onSeries={setSeries}
+                  seriesOptions={seriesOptions}
+                />
+
+                <div style={{ marginTop: 26 }}>
+                  <h2 className="pr-section-title" style={{ fontSize: "1.3rem" }}>
+                    All Devotionals
+                  </h2>
+                  {!shown.length ? (
+                    <div className="pr-empty" style={{ marginTop: 16 }}>
+                      <p>No devotional matches that search yet.</p>
+                    </div>
+                  ) : null}
+                  <div className="pr-dev-grid" style={{ marginTop: 16 }}>
+                    {shown.slice(0, visible).map((row) => (
+                      <DevotionalCard
+                        key={row.id || row.code}
+                        row={row}
+                        language={language}
+                        onOpen={openDevotional}
+                        onShare={(item) => setShareRow(item)}
+                        saved={library.isSaved(row)}
+                        onToggleSave={library.toggleSave}
+                      />
+                    ))}
+                  </div>
+                  {shown.length > visible ? (
+                    <div className="pr-dev-load">
+                      <button
+                        type="button"
+                        className="pr-btn pr-btn-outline pr-btn-sm"
+                        onClick={() => setVisible((count) => count + PAGE_SIZE)}
+                      >
+                        Load More
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </section>
+      </main>
+
+      <ShareSheet
+        open={!!shareRow}
+        onClose={() => setShareRow(null)}
+        title="Share this Devotional"
+        subtitle={shareRow ? titleOf(shareRow, language) : ""}
+        text={shareText}
+        url={shareUrl}
+        subject={shareRow ? titleOf(shareRow, language) : ""}
+        preview={
+          shareRow
+            ? {
+                image: coverOf(shareRow),
+                title: titleOf(shareRow, language),
+                line: `${scriptureOf(shareRow, language)}  -  ${excerptOf(bodyOf(shareRow, language), 1)}`,
+                link: shareUrl
+              }
+            : null
+        }
+        channels={fullShareChannels}
+      />
     </div>
   );
 }

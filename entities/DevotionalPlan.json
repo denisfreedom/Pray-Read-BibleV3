@@ -1,0 +1,12 @@
+{
+  "name": "DevotionalPlan",
+  "description": "A series of devotionals that are read day by day, such as a 21 day plan of prayer.",
+  "fields": [
+    {"name": "name_en", "type": "string", "required": true, "label": "Plan name (EN)"},
+    {"name": "name_lu", "type": "string", "label": "Plan name (Luganda)"},
+    {"name": "description", "type": "string", "label": "Description"},
+    {"name": "days", "type": "number", "label": "Number of days"},
+    {"name": "active", "type": "boolean", "label": "Shown on the site"}
+  ],
+  "x-fse2-access": {"version": 1, "rules": [{"actions": ["read"], "subject": {"roles": ["*"]}}, {"actions": ["create", "update", "delete"], "subject": {"roles": ["owner", "admin"]}}]}
+}

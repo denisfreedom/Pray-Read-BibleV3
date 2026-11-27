@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -6,8 +6,25 @@ import { fetchPublicCollection } from "@/lib/contentApi";
 import { useAuth } from "@/lib/AuthContext";
 import { DEVOTIONALS, VERSE_OF_THE_DAY, COMMUNITY_POSTS } from "@/lib/seedContent";
 import { HERO_IMAGE, WORSHIP_IMAGE, LOGO_URL, DONATE_URL, DONATE_LINK_PROPS } from "@/lib/theme";
-import { toISODate } from "@/lib/reading";
+import { toISODate, shiftISODate } from "@/lib/reading";
+import { fullShareChannels } from "@/lib/share";
+import {
+  bodyOf,
+  buildDevotionalShareText,
+  coverOf,
+  devotionalKey,
+  devotionalUrl,
+  excerptOf,
+  longDateLabel,
+  mergeWithBundledText,
+  pickDailyDevotional,
+  rememberDaily,
+  scriptureOf,
+  sortDevotionals,
+  titleOf
+} from "@/lib/devotionals";
 import ShareRow from "@/components/common/ShareRow";
+import ShareSheet from "@/components/read/ShareSheet";
 import { BookOpenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, UsersIcon, NotebookPenIcon, ArrowRightIcon, DownloadIcon, SmartphoneIcon, SparklesIcon } from "lucide-react";
 import { fse2 } from "@/api/fse2Client";
 
@@ -30,6 +47,11 @@ export default function Home() {
     queryFn: () => fetchPublicCollection("verseOfDay", { authenticated: isAuthenticated })
   });
 
+  const { data: devotionalRows } = useQuery({
+    queryKey: ["devotionals"],
+    queryFn: () => fetchPublicCollection("devotionals", { authenticated: isAuthenticated })
+  });
+
   const today = toISODate();
 
   const verse = useMemo(() => {
@@ -37,7 +59,18 @@ export default function Home() {
     return rows.find((row) => row.verse_date === today) || rows[0];
   }, [verseRows, today]);
 
-  const devotional = DEVOTIONALS[0];
+  // The devotional of the day. The pick is seeded by the date, so everybody
+  // sees the same one today and the same one on the next refresh.
+  const daily = useMemo(() => {
+    const rows = devotionalRows && devotionalRows.length ? devotionalRows : DEVOTIONALS;
+    return pickDailyDevotional(sortDevotionals(mergeWithBundledText(rows)), today, shiftISODate(today, -1));
+  }, [devotionalRows, today]);
+
+  useEffect(() => {
+    if (daily) rememberDaily(today, devotionalKey(daily));
+  }, [daily, today]);
+
+  const [shareDaily, setShareDaily] = useState(false);
   const post = COMMUNITY_POSTS[0];
 
   return (
@@ -148,29 +181,47 @@ export default function Home() {
 
           <div className="pr-card" style={{ overflow: "hidden" }}>
             <img
-              src={WORSHIP_IMAGE}
-              alt="A Bible lit by a warm lamp"
+              src={daily ? coverOf(daily) : WORSHIP_IMAGE}
+              alt="An open Bible with a cup of coffee in the morning light"
               style={{ width: "100%", height: 240, objectFit: "cover", display: "block" }}
             />
             <div className="pr-card-pad">
-              <span className="pr-badge pr-badge-gold">{devotional.code}</span>
+              <span className="pr-eyebrow" style={{ margin: 0, display: "block" }}>
+                Daily Devotional  -  {longDateLabel(today)}
+              </span>
               <h2 className="pr-heading" style={{ margin: "12px 0 0", fontSize: "1.3rem", fontWeight: 800 }}>
-                {devotional.title}
+                {daily ? titleOf(daily, "BOTH") : "Today's Devotional  -  Coming soon"}
               </h2>
               <p className="pr-serif" style={{ margin: "8px 0 0", color: "var(--pr-gold-deep)", fontWeight: 700 }}>
-                {devotional.scripture}
+                {daily ? scriptureOf(daily, "BOTH") : "Psalm 23:1"}
               </p>
               <p style={{ margin: "10px 0 0", fontSize: "0.92rem" }}>
-                {devotional.body.split("\n\n")[0]}
+                {daily ? excerptOf(bodyOf(daily, "BOTH"), 2) : "The LORD is my shepherd; I shall not want."}
               </p>
-              <Link
-                to={createPageUrl("Devotionals") + `?devotional=${devotional.code}`}
-                className="pr-btn pr-btn-primary pr-btn-sm"
-                style={{ marginTop: 16 }}
-              >
-                Read more
-                <ArrowRightIcon className="h-4 w-4" />
-              </Link>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
+                {daily ? (
+                  <>
+                    <Link
+                      to={createPageUrl("Devotionals") + `?devotional=${encodeURIComponent(devotionalKey(daily))}`}
+                      className="pr-btn pr-btn-primary pr-btn-sm"
+                    >
+                      Read Full
+                      <ArrowRightIcon className="h-4 w-4" />
+                    </Link>
+                    <button
+                      type="button"
+                      className="pr-btn pr-btn-outline pr-btn-sm"
+                      onClick={() => setShareDaily(true)}
+                    >
+                      Share
+                    </button>
+                  </>
+                ) : (
+                  <Link to={createPageUrl("Devotionals")} className="pr-btn pr-btn-primary pr-btn-sm">
+                    Open the devotionals
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -267,6 +318,27 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <ShareSheet
+        open={shareDaily && !!daily}
+        onClose={() => setShareDaily(false)}
+        title="Share this Devotional"
+        subtitle={daily ? titleOf(daily, "BOTH") : ""}
+        text={daily ? buildDevotionalShareText(daily, devotionalUrl(daily), "BOTH") : ""}
+        url={daily ? devotionalUrl(daily) : ""}
+        subject={daily ? titleOf(daily, "BOTH") : ""}
+        preview={
+          daily
+            ? {
+                image: coverOf(daily),
+                title: titleOf(daily, "BOTH"),
+                line: `${scriptureOf(daily, "BOTH")}  -  ${excerptOf(bodyOf(daily, "BOTH"), 1)}`,
+                link: devotionalUrl(daily)
+              }
+            : null
+        }
+        channels={fullShareChannels}
+      />
     </div>
   );
 }

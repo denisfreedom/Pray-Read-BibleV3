@@ -2,10 +2,35 @@
 // are not signed in still get the real library instead of an empty screen,
 // and public submissions (contact form, questions) are accepted server-side.
 
+// The date of today, as the reader sees it: YYYY-MM-DD.
+const todayISO = () => {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+};
+
+// The front page reads only the devotionals that are active and whose date
+// has come: a devotional scheduled for a later day waits for its day.
+const visibleDevotionals = (rows) =>
+  (rows || []).filter((row) => {
+    if (!row || row.active === false) return false;
+    const date = String(row.date || row.publish_date || "").slice(0, 10);
+    if (!date) return true;
+    return date <= todayISO();
+  });
+
 const readCollection = async (collection) => {
   switch (collection) {
     case "devotionals":
-      return await fse2.entities.Devotional.list("-updated_date", 300);
+      return visibleDevotionals(await fse2.entities.Devotional.list("-updated_date", 300));
+    case "devotionalTopics":
+      return (await fse2.entities.DevotionalTopic.list("-updated_date", 200)).filter(
+        (row) => row && row.active !== false
+      );
+    case "devotionalPlans":
+      return (await fse2.entities.DevotionalPlan.list("-updated_date", 200)).filter(
+        (row) => row && row.active !== false
+      );
     case "prayers":
       return await fse2.entities.Prayer.list("-updated_date", 300);
     case "series":
