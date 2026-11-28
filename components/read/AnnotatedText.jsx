@@ -3,7 +3,8 @@ import { HighlighterIcon, Trash2Icon, Tag } from "lucide-react";
 
 // A block of text the reader can mark. Select any part of it and the small
 // toolbar appears: pick a colour to highlight it, or underline it. The marks
-// are stored by the parent so they survive the next visit.
+// are stored by the parent so they survive the next visit. Works with mouse,
+// touch and keyboard selection.
 
 const HIGHLIGHT_COLORS = [
   { id: "gold", value: "#f6dfa4" },
@@ -61,6 +62,24 @@ const buildSegments = (text, annotations, nodes) => {
   return segments;
 };
 
+// Character offset of a DOM point (node, offset) measured from the start of the container.
+const offsetInside = (container, node, offset) => {
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  range.setEnd(node, offset);
+  return range.toString().length;
+};
+
+// Drop leading and trailing whitespace so a triple-tap or a long-press does not
+// mark the spaces or the line break around the words the reader chose.
+const trimToWords = (plain, start, end) => {
+  let from = start;
+  let to = end;
+  while (from < to && /\s/.test(plain[from])) from += 1;
+  while (to > from && /\s/.test(plain[to - 1])) to -= 1;
+  return { start: from, end: to };
+};
+
 export default function AnnotatedText({
   blockId,
   section,
@@ -75,52 +94,79 @@ export default function AnnotatedText({
 }) {
   const containerRef = useRef(null);
   const toolbarRef = useRef(null);
+  const timerRef = useRef(null);
   const [selection, setSelection] = useState(null);
+  const plain = String(text || "");
 
   const readSelection = useCallback(() => {
     const container = containerRef.current;
-    if (!container) return;
-    const dom = typeof window !== "undefined" ? window.getSelection() : null;
-    if (!dom || dom.rangeCount === 0) return;
+    if (!container || typeof window === "undefined") return;
+    const dom = window.getSelection();
+    if (!dom || dom.rangeCount === 0 || dom.isCollapsed) return;
     const range = dom.getRangeAt(0);
     if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return;
-    const quote = range.toString();
-    if (!quote || !quote.trim()) return;
-    const before = document.createRange();
-    before.selectNodeContents(container);
-    before.setEnd(range.startContainer, range.startOffset);
-    const start = before.toString().length;
+    const rawStart = offsetInside(container, range.startContainer, range.startOffset);
+    const rawEnd = offsetInside(container, range.endContainer, range.endOffset);
+    const { start, end } = trimToWords(
+      plain,
+      Math.max(0, Math.min(rawStart, plain.length)),
+      Math.max(0, Math.min(rawEnd, plain.length))
+    );
+    if (end <= start) return;
     const rect = range.getBoundingClientRect();
     setSelection({
       start,
-      end: start + quote.length,
-      quote,
+      end,
+      quote: plain.slice(start, end),
       top: rect.top,
+      bottom: rect.bottom,
       left: rect.left,
       width: rect.width
     });
-  }, []);
+  }, [plain]);
 
-  const closeSelection = useCallback(() => {
-    setSelection(null);
-  }, []);
-
+  // Mobile and desktop both report the finished selection through selectionchange.
   useEffect(() => {
-    const handlePointer = (event) => {
-      if (!selection) return;
-      const target = event.target;
-      if (containerRef.current && containerRef.current.contains(target)) return;
-      if (toolbarRef.current && toolbarRef.current.contains(target)) return;
+    const handleChange = () => {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(readSelection, 120);
+    };
+    document.addEventListener("selectionchange", handleChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleChange);
+      window.clearTimeout(timerRef.current);
+    };
+  }, [readSelection]);
+
+  // Keep the toolbar attached to the words while the page scrolls.
+  useEffect(() => {
+    if (!selection) return undefined;
+    window.addEventListener("scroll", readSelection, true);
+    return () => window.removeEventListener("scroll", readSelection, true);
+  }, [selection, readSelection]);
+
+  // A tap or press outside the toolbar dismisses it. A new press on the text
+  // starts a new selection, which reopens the toolbar when it is made.
+  useEffect(() => {
+    if (!selection) return undefined;
+    const handlePress = (event) => {
+      if (toolbarRef.current && toolbarRef.current.contains(event.target)) return;
       setSelection(null);
     };
-    document.addEventListener("mousedown", handlePointer);
-    return () => document.removeEventListener("mousedown", handlePointer);
+    document.addEventListener("mousedown", handlePress);
+    document.addEventListener("touchstart", handlePress, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handlePress);
+      document.removeEventListener("touchstart", handlePress);
+    };
   }, [selection]);
 
-  const segments = useMemo(
-    () => buildSegments(String(text || ""), annotations, nodes),
-    [text, annotations, nodes]
-  );
+  const segments = useMemo(() => buildSegments(plain, annotations, nodes), [plain, annotations, nodes]);
+
+  const clearDomSelection = () => {
+    const dom = typeof window !== "undefined" ? window.getSelection() : null;
+    if (dom) dom.removeAllRanges();
+  };
 
   const mark = (kind, color) => {
     if (!selection || !onAnnotate) return;
@@ -133,8 +179,7 @@ export default function AnnotatedText({
       end_offset: selection.end,
       quote: selection.quote
     });
-    const dom = typeof window !== "undefined" ? window.getSelection() : null;
-    if (dom) dom.removeAllRanges();
+    clearDomSelection();
     setSelection(null);
   };
 
@@ -147,15 +192,21 @@ export default function AnnotatedText({
           Number(annotation.end_offset) > selection.start
       )
       .forEach((annotation) => onRemove(annotation));
-    const dom = typeof window !== "undefined" ? window.getSelection() : null;
-    if (dom) dom.removeAllRanges();
+    clearDomSelection();
     setSelection(null);
   };
 
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 360;
+  const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 640;
   const toolbarLeft = selection
-    ? Math.min(Math.max(selection.left + selection.width / 2, 90), window.innerWidth - 90)
+    ? Math.min(Math.max(selection.left + selection.width / 2, 150), viewportWidth - 150)
     : 0;
-  const toolbarTop = selection ? Math.max(selection.top - 46, 12) : 0;
+  // Above the selection when there is room, otherwise just below it.
+  const toolbarTop = selection
+    ? selection.top > 64
+      ? selection.top - 48
+      : Math.min(selection.bottom + 10, viewportHeight - 56)
+    : 0;
 
   return (
     <>
@@ -166,6 +217,7 @@ export default function AnnotatedText({
         data-block={blockId}
         onMouseUp={readSelection}
         onKeyUp={readSelection}
+        onTouchEnd={readSelection}
       >
         {segments.map((segment) => {
           if (segment.node) {
@@ -193,7 +245,13 @@ export default function AnnotatedText({
         <div
           ref={toolbarRef}
           className="pr-annot-toolbar"
-          style={{ top: toolbarTop, left: toolbarLeft }}
+          style={{
+            position: "fixed",
+            top: toolbarTop,
+            left: toolbarLeft,
+            transform: "translateX(-50%)",
+            zIndex: 60
+          }}
           role="toolbar"
           aria-label="Mark this text"
           onMouseDown={(event) => event.stopPropagation()}
