@@ -19,6 +19,9 @@
 .sticky {
     position: sticky
 }
+.isolate {
+    isolation: isolate
+}
 .mt-1 {
     margin-top: 0.25rem
 }
@@ -42,6 +45,9 @@
 }
 .grid {
     display: grid
+}
+.contents {
+    display: contents
 }
 .hidden {
     display: none
@@ -132,6 +138,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap
+}
+.rounded {
+    border-radius: 0.25rem
 }
 .rounded-lg {
     border-radius: var(--radius)

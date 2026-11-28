@@ -134,7 +134,6 @@ export default function ShareSheet({
             <div className="pr-share-preview-text">
               {preview.title ? <p className="pr-share-preview-title">{preview.title}</p> : null}
               {preview.line ? <p className="pr-share-preview-line">{preview.line}</p> : null}
-              {preview.link ? <p className="pr-share-preview-link">{preview.link}</p> : null}
             </div>
           </section>
         ) : null}

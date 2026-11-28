@@ -201,11 +201,18 @@ export default function AnnotatedText({
   const toolbarLeft = selection
     ? Math.min(Math.max(selection.left + selection.width / 2, 150), viewportWidth - 150)
     : 0;
-  // Above the selection when there is room, otherwise just below it.
+  // On touch screens the phone's own selection bar opens above the words, so
+  // the highlight bar always sits below the selection, clear of the handle.
+  const isTouch =
+    typeof window !== "undefined" &&
+    ("ontouchstart" in window || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches));
+  // Desktop: above the selection when there is room, otherwise just below it.
   const toolbarTop = selection
-    ? selection.top > 64
-      ? selection.top - 48
-      : Math.min(selection.bottom + 10, viewportHeight - 56)
+    ? isTouch
+      ? Math.max(8, Math.min(selection.bottom + 48, viewportHeight - 60))
+      : selection.top > 64
+        ? selection.top - 48
+        : Math.min(selection.bottom + 10, viewportHeight - 56)
     : 0;
 
   return (
