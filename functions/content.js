@@ -19,6 +19,18 @@ const visibleDevotionals = (rows) =>
     return date <= todayISO();
   });
 
+const listAll = async (entityName, pageSize = 500) => {
+  const output = [];
+  let offset = 0;
+  while (true) {
+    const page = await fse2.entities[entityName].list("-updated_date", pageSize, offset);
+    const rows = Array.isArray(page) ? page : [];
+    output.push(...rows);
+    if (rows.length < pageSize) return output;
+    offset += rows.length;
+  }
+};
+
 const readCollection = async (collection) => {
   switch (collection) {
     case "devotionals":
@@ -48,13 +60,13 @@ const readCollection = async (collection) => {
     case "verses":
       return await fse2.entities.BibleVerse.list("-updated_date", 2000);
     case "prayerPassages":
-      return await fse2.entities.PrayerPassage.list("-updated_date", 50000);
+      return await listAll("PrayerPassage");
     case "crossReferences":
-      return await fse2.entities.CrossReference.list("-updated_date", 50000);
+      return await listAll("CrossReference");
     case "chapterIntros":
-      return await fse2.entities.ChapterIntro.list("-updated_date", 5000);
+      return await listAll("ChapterIntro");
     case "bookIntros":
-      return await fse2.entities.BookIntro.list("-updated_date", 500);
+      return await listAll("BookIntro");
     case "plan":
       return await fse2.entities.ReadingPlan.list("-updated_date", 200);
     case "settings":
