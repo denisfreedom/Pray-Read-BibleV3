@@ -1,14 +1,15 @@
 // Admin sign-in and password management for the content manager.
-// The password never leaves the server in plain text: it is stored as a salted
-// SHA-256 hash and sessions are signed with a server-held secret.
+// Passwords are stored as a salted PBKDF2-SHA256 hash. Accounts that still hold
+// an earlier salted SHA-256 hash can sign in, and are upgraded at the next
+// password change. Sessions are signed with a server-held secret.
 //
-// The administrator email is admin@prayread.com. The password is read from the
-// ADMIN_INITIAL_PASSWORD secret. The fallback below keeps a fresh install
-// usable when that secret has not been set yet.
+// The administrator email is admin@prayreadbible.com. The initial password is
+// read from the ADMIN_INITIAL_PASSWORD secret and is only used to create the
+// account. The owner reset key is read from the ADMIN_OWNER_RESET_KEY secret.
+// Neither value is written in this file.
 
-const DEFAULT_ADMIN_EMAIL = "admin@prayread.com";
-const DEFAULT_PASSWORD = "PrayRead-Admin-2026";
-const DEFAULT_RESET_KEY = "PrayRead-Reset-Key-2026";
+const DEFAULT_ADMIN_EMAIL = "admin@prayreadbible.com";
+const PBKDF2_ITERATIONS = 210000;
 // The administrator session does not run out on its own: the window is long,
 // and every use of the content manager slides it forward. A session only
 // ends when the owner signs out, or when the password is changed.
@@ -19,13 +20,14 @@ const RENEW_GRACE_MS = 1000 * 60 * 60 * 24 * 14;
 // Passwords that shipped in earlier builds. An account still on one of them is
 // moved to the configured password the first time it signs in.
 const LEGACY_PASSWORDS = ["prayread-admin"];
+// The owner reset is locked after this many failed attempts in the window.
+const RESET_MAX_FAILURES = 5;
+const RESET_WINDOW_MS = 1000 * 60 * 15;
 
 // Reads a secret from the environment. The name of every secret is written
 // out on purpose: the platform refuses dynamic environment lookups, where a
-// secret is asked for by a computed name, and it blocks any function that
-// uses them. The sign-in must never ask for a secret that way. Both the node
-// shape and the Deno shape are supported, and a missing environment can
-// never break the administrator's way into the content manager.
+// secret is asked for by a computed name. A missing environment never breaks
+// the administrator's way in; it simply means no account can be created.
 const readAdminPassword = () => {
   try {
     if (typeof process !== "undefined" && process && process.env) {
@@ -41,15 +43,15 @@ const readAdminPassword = () => {
       if (value) return String(value);
     }
   } catch (error) {
-    // The environment is not readable, the fallback is used.
+    // The environment is not readable, nothing is configured.
   }
-  return DEFAULT_PASSWORD;
+  return "";
 };
 
 const readResetKey = () => {
   try {
     if (typeof process !== "undefined" && process && process.env) {
-      const value = process.env.ADMIN_RESET_KEY;
+      const value = process.env.ADMIN_OWNER_RESET_KEY;
       if (value) return String(value);
     }
   } catch (error) {
@@ -57,13 +59,13 @@ const readResetKey = () => {
   }
   try {
     if (typeof Deno !== "undefined" && Deno.env) {
-      const value = Deno.env.get("ADMIN_RESET_KEY");
+      const value = Deno.env.get("ADMIN_OWNER_RESET_KEY");
       if (value) return String(value);
     }
   } catch (error) {
-    // The environment is not readable, the fallback is used.
+    // The environment is not readable, nothing is configured.
   }
-  return DEFAULT_RESET_KEY;
+  return "";
 };
 
 const INITIAL_PASSWORD = readAdminPassword();
@@ -83,14 +85,20 @@ const digest = async (text) => {
   return toHex(bytes);
 };
 
-const hashPassword = async (password, salt) => digest(`${salt}:${password}`);
+// The current hash: PBKDF2-SHA256 with a per-account salt. The result is
+// tagged with its algorithm and iteration count, so it can be recognised.
+const hashPassword = async (password, salt) => {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    key,
+    256
+  );
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(bits)}`;
+};
 
-// A password hash can be written in more than one way, and an account that
-// was created by an earlier build may hold a hash this build would never
-// produce. Such an account could never sign in, because the comparison
-// never matches. Every known spelling of the known passwords is therefore
-// checked, so an old account is recognised and moved to the password the
-// owner knows.
+// Earlier builds wrote salted SHA-256 hashes in a few spellings. Those are
+// still recognised so an existing account is never locked out.
 const HASH_SHAPES = [
   (salt, password) => `${salt}:${password}`,
   (salt, password) => `${password}:${salt}`,
@@ -98,11 +106,12 @@ const HASH_SHAPES = [
   (salt, password) => `${password}${salt}`
 ];
 
-// True when the stored hash belongs to this password, in any of the known
-// spellings. The salt is part of every spelling, so this only ever accepts
-// the real password and nothing else.
+// True when the stored hash belongs to this password.
 const matchesPassword = async (storedHash, salt, password) => {
   if (!storedHash || !salt || !password) return false;
+  if (String(storedHash).startsWith("pbkdf2$")) {
+    return (await hashPassword(password, salt)) === storedHash;
+  }
   for (const shape of HASH_SHAPES) {
     const candidate = await digest(shape(salt, password));
     if (candidate === storedHash) return true;
@@ -113,11 +122,32 @@ const matchesPassword = async (storedHash, salt, password) => {
 // The passwords this app knows. An account that still answers to one of them
 // is moved to the configured password.
 const matchesKnownPassword = async (storedHash, salt) => {
-  const candidates = [INITIAL_PASSWORD, ...LEGACY_PASSWORDS];
+  const candidates = [INITIAL_PASSWORD, ...LEGACY_PASSWORDS].filter(Boolean);
   for (const password of candidates) {
     if (await matchesPassword(storedHash, salt, password)) return true;
   }
   return false;
+};
+
+// The password rule for every new password: Option A and the owner reset.
+// It returns an empty string when the password is acceptable.
+const newPasswordProblem = (current, next) => {
+  if (next.length < 12) return "The new password must be at least 12 characters.";
+  if (!/[A-Z]/.test(next) || !/[a-z]/.test(next) || !/[0-9]/.test(next) || !/[^A-Za-z0-9]/.test(next)) {
+    return "The new password needs an uppercase letter, a lowercase letter, a number and a symbol.";
+  }
+  if (current && current === next) return "The new password must be different from the current password.";
+  return "";
+};
+
+// Compares two texts without stopping at the first different character.
+const sameText = (left, right) => {
+  const a = encoder.encode(left);
+  const b = encoder.encode(right);
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index];
+  return difference === 0;
 };
 
 // Base64 without Buffer, so the token can be built and read wherever the
@@ -161,9 +191,10 @@ const readAccount = async (email) => {
 
 // Makes sure the administrator account exists and is usable: it creates it when
 // it is missing, repairs a record that lost its secret or its password, and
-// moves an account that is still on an old build password to the configured
-// password. A password the owner set afterwards is never touched.
+// moves an account that still answers to a known older password to the
+// configured password. A password the owner set afterwards is never touched.
 const ensureAccount = async () => {
+  if (!INITIAL_PASSWORD) return readAccount(DEFAULT_ADMIN_EMAIL);
   let account = await readAccount(DEFAULT_ADMIN_EMAIL);
 
   if (!account) {
@@ -194,18 +225,13 @@ const ensureAccount = async () => {
   if (!account.salt || !account.password_hash) {
     patch.salt = randomHex(16);
     patch.password_hash = await hashPassword(INITIAL_PASSWORD, patch.salt);
-  } else {
-    // The account already answers to the configured password: nothing to do.
-    const current = await hashPassword(INITIAL_PASSWORD, account.salt);
-    if (current !== account.password_hash) {
-      // The stored hash is one an earlier build wrote. When it still belongs
-      // to a password this app knows, the account is moved to the configured
-      // password with a fresh salt. A password the owner set afterwards is
-      // never touched.
-      if (await matchesKnownPassword(account.password_hash, account.salt)) {
-        patch.salt = randomHex(16);
-        patch.password_hash = await hashPassword(INITIAL_PASSWORD, patch.salt);
-      }
+  } else if (!(await matchesPassword(account.password_hash, account.salt, INITIAL_PASSWORD))) {
+    // The stored hash is not the configured password. When it still belongs
+    // to a password this app knows, the account is moved to the configured
+    // password. A password the owner set afterwards is never touched.
+    if (await matchesKnownPassword(account.password_hash, account.salt)) {
+      patch.salt = randomHex(16);
+      patch.password_hash = await hashPassword(INITIAL_PASSWORD, patch.salt);
     }
   }
 
@@ -218,15 +244,14 @@ const ensureAccount = async () => {
       account = { ...account, ...patch };
     } catch (error) {
       // A repair that cannot be written must never keep the administrator
-      // out: the sign-in accepts the password under every known spelling.
+      // out: the sign-in still checks the stored password.
     }
   }
 
   return account;
 };
 
-// Builds a session token and says when it runs out. Every session carries
-// its own clock, so the browser knows when to renew it.
+// Builds a session token and says when it runs out.
 const buildSession = async (account) => {
   const expiresAt = Date.now() + SESSION_TTL_MS;
   const payload = encodeBase64(
@@ -285,6 +310,19 @@ const logActivity = async (action, detail) => {
   }
 };
 
+// Failed owner reset attempts inside the rate-limit window. Every attempt is
+// written to the activity log, so the count comes from there.
+const recentFailedResets = async () => {
+  const rows = (await fse2.entities.ActivityLog.list("-created_date", 200)) || [];
+  const since = Date.now() - RESET_WINDOW_MS;
+  return rows.filter(
+    (row) =>
+      row.action === "owner reset attempt" &&
+      row.detail === "failed" &&
+      Date.parse(row.created_date) >= since
+  ).length;
+};
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -300,10 +338,11 @@ Deno.serve(async (req) => {
         // write that is not allowed cannot stop the sign-in.
       }
       const target = await readAccount(email);
-      if (!target) {
-        return Response.json({ error: "That administrator account does not exist." }, { status: 401 });
-      }
-      const accepted = await matchesPassword(target.password_hash, target.salt, password);
+      // The same answer for an unknown email and a wrong password, so the
+      // sign-in never reveals which one was wrong.
+      const accepted = target
+        ? await matchesPassword(target.password_hash, target.salt, password)
+        : false;
       if (!accepted) {
         return Response.json({ error: "Incorrect email or password." }, { status: 401 });
       }
@@ -313,7 +352,7 @@ Deno.serve(async (req) => {
         token: session.token,
         expiresAt: session.expiresAt,
         email: target.email,
-        role: "admin"
+        role: "owner"
       });
     }
 
@@ -334,8 +373,7 @@ Deno.serve(async (req) => {
     }
 
     // Keeps the session open. A session that has just run out is renewed as
-    // well, as long as it is inside the grace period, so a long installation
-    // is never cut off by the clock.
+    // well, as long as it is inside the grace period.
     if (action === "renew") {
       const signed = await readSignedToken(body.token);
       if (!signed || !withinGrace(signed.data)) {
@@ -371,8 +409,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Signing out ends the session for good: the token is taken back on the
-    // server, so it cannot be picked up again.
+    // Signing out ends the session for good: the session version is moved on,
+    // so the token can never be used again.
     if (action === "logout") {
       const signed = await readSignedToken(body.token);
       if (signed) {
@@ -398,14 +436,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Option A: the owner knows the current password. Every session is
+    // invalidated except the one that made the change, which gets a fresh one.
     if (action === "changePassword") {
       const data = await verifyToken(body.token);
       if (!data) return Response.json({ error: "Session expired." }, { status: 401 });
       const current = String(body.current || "");
       const next = String(body.next || "");
-      if (next.length < 8) {
-        return Response.json({ error: "The new password must be at least 8 characters." }, { status: 400 });
-      }
+      const problem = newPasswordProblem(current, next);
+      if (problem) return Response.json({ error: problem }, { status: 400 });
       const target = await readAccount(data.email);
       if (!target) return Response.json({ error: "Account not found." }, { status: 404 });
       const currentAccepted = await matchesPassword(target.password_hash, target.salt, current);
@@ -422,33 +461,36 @@ Deno.serve(async (req) => {
         updated_date: new Date().toISOString()
       });
       await logActivity("changed the admin password", "Previous password invalidated");
-      // The owner stays signed in: the session is handed back with a fresh
-      // window, built with the new session version.
       const session = await buildSession({ ...target, session_version });
       return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt });
     }
 
-    // Owner rescue path: sets a new password without the old one, guarded by
-    // the owner-only reset key held in the environment.
+    // Option B: the owner does not remember the password. The owner reset key
+    // from the environment sets a new password without the old one. Every
+    // attempt is logged, and failed attempts lock the reset for a while.
+    // Any wrong key, or an email that is not the administrator's, gets the
+    // same answer, so nothing reveals whether the account exists.
     if (action === "resetPassword") {
-      const key = String(body.key || "");
-      const email = String(body.email || DEFAULT_ADMIN_EMAIL).trim();
-      const next = String(body.password || "");
-      if (!RESET_KEY) {
+      if ((await recentFailedResets()) >= RESET_MAX_FAILURES) {
+        await logActivity("owner reset attempt", "rate limited");
         return Response.json(
-          { error: "No reset key is set for this app. Add ADMIN_RESET_KEY in the environment settings." },
-          { status: 400 }
+          { error: "Too many failed attempts. Try again in 15 minutes." },
+          { status: 429 }
         );
       }
-      if (key !== RESET_KEY) {
-        return Response.json({ error: "That reset key is not correct." }, { status: 401 });
+      const key = String(body.key || "");
+      const email = String(body.email || "").trim().toLowerCase();
+      const next = String(body.password || "");
+      const keyAccepted = Boolean(RESET_KEY) && sameText(key, RESET_KEY);
+      if (!keyAccepted || email !== DEFAULT_ADMIN_EMAIL) {
+        await logActivity("owner reset attempt", "failed");
+        return Response.json({ error: "Invalid Owner Reset Key." }, { status: 401 });
       }
-      if (next.length < 8) {
-        return Response.json({ error: "The new password must be at least 8 characters." }, { status: 400 });
-      }
-      const target = await readAccount(email);
+      const problem = newPasswordProblem("", next);
+      if (problem) return Response.json({ error: problem }, { status: 400 });
+      const target = await ensureAccount();
       if (!target) {
-        return Response.json({ error: "Account not found." }, { status: 404 });
+        return Response.json({ error: "The administrator account is not set up yet." }, { status: 500 });
       }
       const salt = randomHex(16);
       const password_hash = await hashPassword(next, salt);
@@ -459,7 +501,7 @@ Deno.serve(async (req) => {
         session_version: String(Number(target.session_version || 1) + 1),
         updated_date: new Date().toISOString()
       });
-      await logActivity("reset the admin password", "Password reset with the owner key");
+      await logActivity("owner reset attempt", "succeeded");
       return Response.json({ ok: true, email: target.email });
     }
 

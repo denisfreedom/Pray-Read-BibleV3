@@ -21,6 +21,7 @@ import QaPanel from "@/components/admin/QaPanel";
 import DevotionalsPanel from "@/components/admin/DevotionalsPanel";
 import PassagesPanel from "@/components/admin/PassagesPanel";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import ResetAdminPasswordSection from "@/components/admin/ResetAdminPasswordSection";
 import { LayoutDashboardIcon, BookOpenIcon, LanguagesIcon, NotebookPenIcon, HandHeartIcon, MusicIcon, MessageCircleQuestionIcon, LightbulbIcon, UsersIcon, MailIcon, PaletteIcon, HistoryIcon, SettingsIcon, LogOutIcon, Loader2Icon, PlusIcon, PencilIcon, Trash2Icon, UploadIcon, ArrowLeftIcon, XIcon, HeartHandshakeIcon, ListIcon } from "lucide-react";
 
 const SECTIONS = [
@@ -143,8 +144,6 @@ export default function AdminDashboard() {
   const [importBook, setImportBook] = useState("");
   const [importResult, setImportResult] = useState(null);
   const [settings, setSettings] = useState({ ivory: "#faf8f2", emerald: "#1d4035", gold: "#e9c981" });
-  const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
-  const [passwordNote, setPasswordNote] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const collectionFor = useMemo(
@@ -318,27 +317,6 @@ export default function AdminDashboard() {
       setMessage("Theme colours updated on the live site.");
     } catch (err) {
       handleError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const changePassword = async () => {
-    setBusy(true);
-    setPasswordNote("");
-    try {
-      if (passwordForm.next !== passwordForm.confirm) {
-        setPasswordNote("The new password and the confirmation do not match.");
-        return;
-      }
-      const result = await callAdminData("changePassword", {
-        current: passwordForm.current,
-        next: passwordForm.next
-      });
-      setPasswordForm({ current: "", next: "", confirm: "" });
-      setPasswordNote("Password updated. The old password no longer works.");
-    } catch (err) {
-      setPasswordNote(err.message || "Could not change the password.");
     } finally {
       setBusy(false);
     }
@@ -693,56 +671,7 @@ export default function AdminDashboard() {
 
           {section === "settings" ? (
             <div className="pr-grid pr-grid-2">
-              <div className="pr-card pr-card-pad">
-                <h2 className="pr-heading" style={{ margin: "0 0 6px", fontSize: "1.05rem", fontWeight: 800 }}>
-                  Update admin password
-                </h2>
-                <p style={{ margin: "0 0 16px", fontSize: "0.85rem" }}>
-                  The current password is verified before the new one is stored. Old sessions stop working
-                  immediately.
-                </p>
-                <div className="pr-field">
-                  <label className="pr-label" htmlFor="current-password">
-                    Current password
-                  </label>
-                  <input
-                    id="current-password"
-                    className="pr-input"
-                    type="password"
-                    value={passwordForm.current}
-                    onChange={(event) => setPasswordForm((prev) => ({ ...prev, current: event.target.value }))}
-                  />
-                </div>
-                <div className="pr-field">
-                  <label className="pr-label" htmlFor="next-password">
-                    New password
-                  </label>
-                  <input
-                    id="next-password"
-                    className="pr-input"
-                    type="password"
-                    value={passwordForm.next}
-                    onChange={(event) => setPasswordForm((prev) => ({ ...prev, next: event.target.value }))}
-                  />
-                </div>
-                <div className="pr-field">
-                  <label className="pr-label" htmlFor="confirm-password">
-                    Confirm new password
-                  </label>
-                  <input
-                    id="confirm-password"
-                    className="pr-input"
-                    type="password"
-                    value={passwordForm.confirm}
-                    onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirm: event.target.value }))}
-                  />
-                </div>
-                {passwordNote ? <div className="pr-success">{passwordNote}</div> : null}
-                <button type="button" className="pr-btn pr-btn-primary" style={{ marginTop: 14 }} onClick={changePassword} disabled={busy}>
-                  {busy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : null}
-                  Update password
-                </button>
-              </div>
+              <ResetAdminPasswordSection />
 
               <div className="pr-card pr-card-pad">
                 <h2 className="pr-heading" style={{ margin: "0 0 6px", fontSize: "1.05rem", fontWeight: 800 }}>
